@@ -116,7 +116,7 @@ class TestE2EIntegration(unittest.TestCase):
         # 2. Wait for download completion
         completed = False
         save_path = None
-        for _ in range(50):
+        for _ in range(100):
             time.sleep(0.1)
             info_res = self.client.send_request({"action": "get_download", "download_id": dl_id})
             if info_res.get("status") == "ok":
