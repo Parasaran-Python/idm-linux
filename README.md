@@ -6,6 +6,7 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/Parasaran-Python/idm-linux/actions/workflows/ci.yml"><img src="https://github.com/Parasaran-Python/idm-linux/actions/workflows/ci.yml/badge.svg" alt="CI Status"></a>
   <img src="https://img.shields.io/badge/Platform-Linux%20(X11%20%26%20Wayland)-blue" alt="Platform">
   <img src="https://img.shields.io/badge/Python-3.10+-brightgreen" alt="Python">
   <img src="https://img.shields.io/badge/GUI-PyQt6-blueviolet" alt="GUI">

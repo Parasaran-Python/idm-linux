@@ -1,0 +1,101 @@
+name: Release & Asset Packaging
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    name: Build Application & Extension Packages
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install build tools & dependencies
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y --no-install-recommends \
+            ffmpeg libegl1 libxkbcommon0 libdbus-1-3 libfontconfig1 libgl1 file
+          python -m pip install --upgrade pip build pyinstaller PyQt6
+
+      # 1. Build Python Wheel & sdist
+      - name: Build Python Package (Wheel & sdist)
+        run: |
+          python -m build
+
+      # 2. Build Standalone Linux Executable with PyInstaller
+      - name: Build Standalone Binary (PyInstaller)
+        run: |
+          pyinstaller --name idm-linux \
+            --onedir \
+            --windowed \
+            --add-data "extension/icons:extension/icons" \
+            --add-data "scripts:scripts" \
+            --icon extension/icons/icon128.png \
+            idm_gui/app.py
+          
+          # Bundle into distributable tarball
+          cd dist && tar -czvf idm-linux-standalone-x86_64.tar.gz idm-linux/ && cd ..
+
+      # 3. Build AppDir & AppImage
+      - name: Build AppImage
+        run: |
+          ./scripts/build_appimage.sh
+          # Download appimagetool
+          curl -L -o appimagetool https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage
+          chmod +x appimagetool
+          sed -i 's|AI\x02|\x00\x00\x00|' appimagetool || true # allow running without FUSE on runner
+          ./appimagetool --appimage-extract
+          ./squashfs-root/AppRun dist/AppDir dist/idm-linux-x86_64.AppImage || true
+
+      # 4. Build Chrome MV3 Extension ZIP
+      - name: Package Chrome Extension (MV3)
+        run: |
+          mkdir -p dist/chrome-extension
+          cp -r extension/background extension/content extension/popup extension/icons extension/manifest.json dist/chrome-extension/
+          cd dist/chrome-extension && zip -r ../idm-linux-extension-chrome-mv3.zip . && cd ../..
+
+      # 5. Build Firefox Extension ZIP
+      - name: Package Firefox Extension (MV2/MV3)
+        run: |
+          mkdir -p dist/firefox-extension
+          cp -r extension/background extension/content extension/popup extension/icons dist/firefox-extension/
+          cp extension/manifest.firefox.json dist/firefox-extension/manifest.json
+          cd dist/firefox-extension && zip -r ../idm-linux-extension-firefox.zip . && cd ../..
+
+      # 6. Upload Artifacts for Workflow Run
+      - name: Upload Build Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: idm-linux-build-artifacts
+          path: |
+            dist/*.whl
+            dist/*.tar.gz
+            dist/*.zip
+            dist/*.AppImage
+
+      # 7. Create GitHub Release (on tag)
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: |
+            dist/*.whl
+            dist/*.tar.gz
+            dist/*.zip
+            dist/*.AppImage
+          generate_release_notes: true
+          draft: false
+          prerelease: false
