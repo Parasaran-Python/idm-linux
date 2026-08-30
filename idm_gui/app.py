@@ -20,10 +20,22 @@ from idm_ipc.socket_server import IPCServer
 
 def main():
     parser = argparse.ArgumentParser(description="IDM Linux Desktop Application")
+    parser.add_argument("urls", nargs="*", default=[], help="Optional download URLs to add")
     parser.add_argument("--minimized", action="store_true", help="Start minimized in system tray")
     parser.add_argument("--url", help="Download URL to add immediately")
     parser.add_argument("--config-dir", help="Custom config directory")
     args = parser.parse_args()
+
+    # Cleanly extract target URL, ignoring empty desktop launcher %U expansions
+    target_url = None
+    if args.url and args.url.strip().startswith(("http://", "https://", "ftp://", "idm://")):
+        target_url = args.url.strip()
+    elif args.urls:
+        for u in args.urls:
+            candidate = (u or "").strip()
+            if candidate.startswith(("http://", "https://", "ftp://", "idm://")):
+                target_url = candidate
+                break
 
     config = Config()
     if args.config_dir:
@@ -32,13 +44,14 @@ def main():
     # 1. Single-instance check via IPC
     client = IPCClient(config.socket_path)
     if client.is_server_running():
-        if args.url:
-            print(f"[IDM] Forwarding URL to running IDM instance: {args.url}")
+        if target_url:
+            print(f"[IDM] Forwarding URL to running IDM instance: {target_url}")
             client.send_request({
                 "action": "add_download",
-                "url": args.url,
+                "url": target_url,
                 "start_immediately": True
             })
+            client.send_request({"action": "show_gui"})
         else:
             print("[IDM] IDM is already running. Raising existing window.")
             client.send_request({"action": "show_gui"})
@@ -68,8 +81,8 @@ def main():
     if not args.minimized:
         window.show()
 
-    if args.url:
-        window.open_add_url_dialog(default_url=args.url)
+    if target_url:
+        window.open_add_url_dialog(default_url=target_url)
 
     exit_code = app.exec()
 

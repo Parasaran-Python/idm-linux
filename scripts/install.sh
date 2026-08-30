@@ -14,32 +14,32 @@ echo "========================================================"
 mkdir -p "${BIN_DIR}" "${DESKTOP_DIR}" "${ICON_DIR}"
 
 # 1. Create CLI Wrapper (`idm`)
-cat << 'EOF' > "${BIN_DIR}/idm"
+cat << EOF > "${BIN_DIR}/idm"
 #!/bin/bash
-REPO_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../.." && pwd)"
-PYTHON_BIN="/run/media/parasaran/Dev/SDK/python/install/bin/python3"
-export PYTHONPATH="/usr/lib/python3/dist-packages:/usr/local/lib/python3.14/dist-packages:${REPO_DIR}:$PYTHONPATH"
-exec "${PYTHON_BIN}" -m idm_cli.cli "$@"
+REPO_DIR="${REPO_DIR}"
+PYTHON_BIN="${PYTHON_BIN}"
+export PYTHONPATH="/usr/lib/python3/dist-packages:/usr/local/lib/python3.14/dist-packages:\${REPO_DIR}:\$PYTHONPATH"
+exec "\${PYTHON_BIN}" -m idm_cli.cli "\$@"
 EOF
 chmod +x "${BIN_DIR}/idm"
 
 # 2. Create GUI Wrapper (`idm-gui`)
-cat << 'EOF' > "${BIN_DIR}/idm-gui"
+cat << EOF > "${BIN_DIR}/idm-gui"
 #!/bin/bash
-REPO_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../.." && pwd)"
-PYTHON_BIN="/run/media/parasaran/Dev/SDK/python/install/bin/python3"
-export PYTHONPATH="/usr/lib/python3/dist-packages:/usr/local/lib/python3.14/dist-packages:${REPO_DIR}:$PYTHONPATH"
-exec "${PYTHON_BIN}" -m idm_gui.app "$@"
+REPO_DIR="${REPO_DIR}"
+PYTHON_BIN="${PYTHON_BIN}"
+export PYTHONPATH="/usr/lib/python3/dist-packages:/usr/local/lib/python3.14/dist-packages:\${REPO_DIR}:\$PYTHONPATH"
+exec "\${PYTHON_BIN}" -m idm_gui.app "\$@"
 EOF
 chmod +x "${BIN_DIR}/idm-gui"
 
 # 3. Create Daemon Wrapper (`idm-daemon`)
-cat << 'EOF' > "${BIN_DIR}/idm-daemon"
+cat << EOF > "${BIN_DIR}/idm-daemon"
 #!/bin/bash
-REPO_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../.." && pwd)"
-PYTHON_BIN="/run/media/parasaran/Dev/SDK/python/install/bin/python3"
-export PYTHONPATH="/usr/lib/python3/dist-packages:/usr/local/lib/python3.14/dist-packages:${REPO_DIR}:$PYTHONPATH"
-exec "${PYTHON_BIN}" -m idm_ipc.daemon "$@"
+REPO_DIR="${REPO_DIR}"
+PYTHON_BIN="${PYTHON_BIN}"
+export PYTHONPATH="/usr/lib/python3/dist-packages:/usr/local/lib/python3.14/dist-packages:\${REPO_DIR}:\$PYTHONPATH"
+exec "\${PYTHON_BIN}" -m idm_ipc.daemon "\$@"
 EOF
 chmod +x "${BIN_DIR}/idm-daemon"
 
