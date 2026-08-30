@@ -496,7 +496,7 @@ class MainWindow(QMainWindow):
         QMessageBox.about(
             self,
             "About IDM Linux",
-            "<h3>IDM Linux v1.0.0</h3>"
+            "<h3>IDM Linux v1.0.2</h3>"
             "<p>Internet Download Manager clone for Linux desktop environments.</p>"
             "<p>Features dynamic multi-segment connection allocation, browser download interception, "
             "floating video sniffer, queue scheduler, and native IPC.</p>"
