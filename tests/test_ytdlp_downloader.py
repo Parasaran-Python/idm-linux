@@ -34,5 +34,40 @@ class TestYTDLPDownloader(unittest.TestCase):
         self.assertEqual(ev["eta"], 10)
 
 
+    def test_extract_media_formats_mock(self):
+        # Verify extract_media_formats parses JSON format dictionary correctly
+        sample_json = {
+            "formats": [
+                {"height": 1080, "fps": 60, "tbr": 4000, "vcodec": "avc1", "acodec": "none", "filesize": 50000000},
+                {"height": 720, "fps": 30, "tbr": 2000, "vcodec": "avc1", "acodec": "none", "filesize": 25000000},
+                {"height": 360, "fps": 30, "tbr": 800, "vcodec": "avc1", "acodec": "mp4a", "filesize": 10000000},
+                {"height": None, "vcodec": "none", "acodec": "opus", "filesize": 3000000}
+            ]
+        }
+        import json
+        from unittest.mock import patch, MagicMock
+
+        mock_res = MagicMock()
+        mock_res.returncode = 0
+        mock_res.stdout = json.dumps(sample_json)
+
+        with patch("subprocess.run", return_value=mock_res):
+            formats = YTDLPDownloader.extract_media_formats("https://example.com/video")
+            self.assertTrue(len(formats) >= 3)
+            # Should have 1080p, 720p, 360p, and audio
+            qualities = [f["quality"] for f in formats]
+            self.assertIn("1080", qualities)
+            self.assertIn("720", qualities)
+            self.assertIn("360", qualities)
+            self.assertIn("audio", qualities)
+
+    def test_format_selection_strings(self):
+        dl_1080 = YTDLPDownloader("id1", "https://youtube.com/watch?v=1", "/tmp/v.mp4", quality="1080")
+        self.assertEqual(dl_1080.quality, "1080")
+
+        dl_audio = YTDLPDownloader("id2", "https://youtube.com/watch?v=1", "/tmp/v.mp3", quality="audio")
+        self.assertEqual(dl_audio.quality, "audio")
+
+
 if __name__ == "__main__":
     unittest.main()

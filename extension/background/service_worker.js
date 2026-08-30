@@ -333,6 +333,14 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true;
   }
 
+  if (request.action === "get_tab_media") {
+    const tabId = request.tabId;
+    const mediaSet = tabMediaMap.get(tabId);
+    const list = mediaSet ? Array.from(mediaSet) : [];
+    sendResponse({ streams: list });
+    return true;
+  }
+
   if (request.action === "get_settings") {
     sendResponse({ settings: settings });
     return true;

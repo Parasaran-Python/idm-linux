@@ -172,6 +172,29 @@ class StreamDownloader:
             self._finalize_stream()
 
         except Exception as e:
+            if shutil.which("ffmpeg") and not self._stop_event.is_set():
+                self.log(f"Direct segment parsing encountered '{e}'. Falling back to ffmpeg stream capture...")
+                try:
+                    os.makedirs(os.path.dirname(os.path.abspath(self.save_path)), exist_ok=True)
+                    cmd = ["ffmpeg", "-y"]
+                    if self.headers:
+                        hdr_str = "".join(f"{k}: {v}\r\n" for k, v in self.headers.items() if k.lower() in ["user-agent", "referer", "cookie"])
+                        if hdr_str:
+                            cmd.extend(["-headers", hdr_str])
+                    cmd.extend(["-i", self.url, "-c", "copy", self.save_path])
+                    res = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=180)
+                    if res.returncode == 0 and os.path.exists(self.save_path) and os.path.getsize(self.save_path) > 0:
+                        file_size = os.path.getsize(self.save_path)
+                        self.downloaded_bytes = file_size
+                        self.total_bytes = file_size
+                        self.status = "completed"
+                        self.log(f"Stream capture completed via ffmpeg: {self.save_path}")
+                        if self.on_complete:
+                            self.on_complete(self.download_id, self.save_path)
+                        return
+                except Exception as ex:
+                    self.log(f"ffmpeg stream capture fallback failed: {ex}")
+
             self.status = "error"
             self.log(f"Stream download error: {e}")
             if self.on_error:

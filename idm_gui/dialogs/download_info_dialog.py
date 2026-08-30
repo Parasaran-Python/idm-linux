@@ -40,6 +40,9 @@ class ProbeWorker(QObject):
         try:
             if not self.url or not self.url.startswith(("http://", "https://", "ftp://")):
                 return
+            from idm_core.ytdlp_downloader import YTDLPDownloader
+            if YTDLPDownloader.is_video_platform_url(self.url):
+                return
             headers = {
                 "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
                 "Accept": "*/*",

@@ -3,6 +3,7 @@ Video Platform Stream Downloader using yt-dlp with Real-Time Telemetry & Progres
 Handles downloading from YouTube, Vimeo, Dailymotion, Reddit, Twitter/X, Twitch, etc.
 """
 
+import json
 import os
 import re
 import shutil
@@ -74,6 +75,23 @@ class YTDLPDownloader:
         return any(d in lower for d in domains)
 
     @classmethod
+    def _get_js_runtime_args(cls) -> List[str]:
+        """Find and configure available JS runtime for yt-dlp challenge solving."""
+        for rt_name in ["node", "deno", "bun", "quickjs"]:
+            p = shutil.which(rt_name)
+            if p:
+                return ["--js-runtimes", f"{rt_name}:{p}"]
+        return []
+
+    @classmethod
+    def _get_extractor_args(cls, url: str) -> List[str]:
+        """Configure optimal extractor arguments to prevent SABR missing format fallbacks."""
+        lower = (url or "").lower()
+        if "youtube.com" in lower or "youtu.be" in lower:
+            return ["--extractor-args", "youtube:player_client=android_vr,ios,mweb,web"]
+        return []
+
+    @classmethod
     def extract_media_formats(cls, url: str) -> List[Dict[str, Any]]:
         """Dynamically extract authentic available formats for any video URL."""
         if not cls.is_ytdlp_available() or not url:
@@ -88,14 +106,12 @@ class YTDLPDownloader:
             "--geo-bypass",
             "--remote-components", "ejs:github"
         ]
-
-        if shutil.which("node"):
-            cmd.extend(["--js-runtimes", f"node:{shutil.which('node')}"])
-
+        cmd.extend(cls._get_js_runtime_args())
+        cmd.extend(cls._get_extractor_args(url))
         cmd.append(url)
 
         try:
-            res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, timeout=12)
+            res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, timeout=15)
             if res.returncode != 0 or not res.stdout:
                 return []
 
@@ -212,14 +228,16 @@ class YTDLPDownloader:
             "--progress",
             "-N", "8",
             "--no-playlist",
-            "--extractor-args", "youtube:player_client=android,web,tv",
             "--no-check-certificates",
             "--geo-bypass",
             "--remote-components", "ejs:github",
             "-o", self.save_path,
         ]
 
-        # Quality and format selection with resilient automatic fallback
+        cmd.extend(self._get_js_runtime_args())
+        cmd.extend(self._get_extractor_args(self.url))
+
+        # Quality and format selection with resilient video+audio pairing
         q_str = str(self.quality or self.headers.get("quality", "")).lower().strip()
         is_audio = "audio" in q_str or "mp3" in q_str or self.save_path.lower().endswith((".mp3", ".m4a", ".aac"))
 
@@ -228,15 +246,17 @@ class YTDLPDownloader:
         elif q_str:
             height = "".join(filter(str.isdigit, q_str))
             if height:
-                cmd.extend(["-f", f"bestvideo[height<={height}]+bestaudio/best[height<={height}]/bestvideo+bestaudio/best/18/best"])
+                cmd.extend(["-f", f"bestvideo[height<={height}]+bestaudio/best[height<={height}]/bestvideo+bestaudio/best"])
             else:
-                cmd.extend(["-f", "bestvideo+bestaudio/best/18/best"])
+                cmd.extend(["-f", "bestvideo+bestaudio/best"])
         else:
-            cmd.extend(["-f", "bestvideo+bestaudio/best/18/best"])
+            cmd.extend(["-f", "bestvideo+bestaudio/best"])
 
-        # Add node js runtime if present
-        if shutil.which("node"):
-            cmd.extend(["--js-runtimes", f"node:{shutil.which('node')}"])
+        # Automatic container merging via ffmpeg if available
+        if shutil.which("ffmpeg"):
+            cmd.extend(["--ffmpeg-location", shutil.which("ffmpeg")])
+            if not is_audio and not self.save_path.lower().endswith((".mkv", ".webm")):
+                cmd.extend(["--merge-output-format", "mp4"])
 
         # Add User-Agent and Referer if present
         if self.headers:

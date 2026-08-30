@@ -46,6 +46,44 @@
     return origPlay.apply(this, arguments);
   };
 
+  const origLoad = HTMLMediaElement.prototype.load;
+  HTMLMediaElement.prototype.load = function () {
+    const src = this.currentSrc || this.src;
+    if (src) {
+      reportMedia(src, this.tagName.toLowerCase());
+    }
+    return origLoad.apply(this, arguments);
+  };
+
+  // Hook src setter
+  const srcPropDesc = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, "src");
+  if (srcPropDesc && srcPropDesc.set) {
+    const origSrcSet = srcPropDesc.set;
+    Object.defineProperty(HTMLMediaElement.prototype, "src", {
+      set: function (val) {
+        if (val) reportMedia(val, this.tagName.toLowerCase());
+        return origSrcSet.call(this, val);
+      },
+      get: srcPropDesc.get,
+      configurable: true
+    });
+  }
+
+  // Scan existing media elements on load
+  function scanExistingMedia() {
+    try {
+      const mediaEls = document.querySelectorAll("video, audio, source");
+      mediaEls.forEach((el) => {
+        const src = el.currentSrc || el.src || el.getAttribute("src");
+        if (src) reportMedia(src, el.tagName.toLowerCase());
+      });
+    } catch (e) {}
+  }
+  scanExistingMedia();
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", scanExistingMedia);
+  }
+
   // 2. Hook XHR
   const origOpen = XMLHttpRequest.prototype.open;
   XMLHttpRequest.prototype.open = function (method, url) {
