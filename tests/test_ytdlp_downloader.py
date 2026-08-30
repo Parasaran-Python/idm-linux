@@ -95,6 +95,60 @@ class TestYTDLPDownloader(unittest.TestCase):
             # 50MB video + 5MB audio = 55MB
             self.assertEqual(info["filesize"], 55000000)
 
+    def test_multistream_progress_tracking(self):
+        downloader = YTDLPDownloader("multi-test", "https://youtube.com/watch?v=123", "/tmp/out.mp4")
+        progress_events = []
+        downloader.on_progress = lambda did, stats: progress_events.append(stats)
+
+        # Video stream: 370 MiB
+        downloader._parse_line("[download] Destination: /tmp/out.f399.mp4")
+        downloader._parse_line("[download]  50.0% of 370.00MiB at 10.00MiB/s ETA 00:18")
+        self.assertEqual(downloader.downloaded_bytes, int(185.0 * 1024 * 1024))
+        self.assertEqual(downloader.total_bytes, int(370.0 * 1024 * 1024))
+
+        downloader._parse_line("[download] 100.0% of 370.00MiB at 10.00MiB/s ETA 00:00")
+        self.assertEqual(downloader.downloaded_bytes, int(370.0 * 1024 * 1024))
+        self.assertEqual(downloader.total_bytes, int(370.0 * 1024 * 1024))
+
+        # Audio stream: 26 MiB transition
+        downloader._parse_line("[download] Destination: /tmp/out.f140.m4a")
+        downloader._parse_line("[download]   0.0% of 26.00MiB at 2.00MiB/s ETA 00:13")
+        # Should retain video downloaded bytes without dropping to 0
+        self.assertEqual(downloader.downloaded_bytes, int(370.0 * 1024 * 1024))
+        self.assertEqual(downloader.total_bytes, int(396.0 * 1024 * 1024))
+
+        downloader._parse_line("[download]  50.0% of 26.00MiB at 2.00MiB/s ETA 00:06")
+        self.assertEqual(downloader.downloaded_bytes, int((370.0 + 13.0) * 1024 * 1024))
+        self.assertEqual(downloader.total_bytes, int(396.0 * 1024 * 1024))
+
+        downloader._parse_line("[download] 100.0% of 26.00MiB at 2.00MiB/s ETA 00:00")
+        self.assertEqual(downloader.downloaded_bytes, int(396.0 * 1024 * 1024))
+        self.assertEqual(downloader.total_bytes, int(396.0 * 1024 * 1024))
+
+    def test_codec_priority_selection(self):
+        # When both AV01 (370MB) and AVC1 (664MB) exist for 1080p, prefer AV01 matching yt-dlp
+        sample_json = {
+            "formats": [
+                {"height": 1080, "fps": 30, "tbr": 4500, "vcodec": "avc1.640028", "acodec": "none", "filesize": 664000000},
+                {"height": 1080, "fps": 30, "tbr": 3000, "vcodec": "vp09.00.40", "acodec": "none", "filesize": 450000000},
+                {"height": 1080, "fps": 30, "tbr": 2500, "vcodec": "av01.0.08M.08", "acodec": "none", "filesize": 370000000},
+                {"height": None, "vcodec": "none", "acodec": "opus", "filesize": 26000000}
+            ]
+        }
+        import json
+        from unittest.mock import patch, MagicMock
+
+        mock_res = MagicMock()
+        mock_res.returncode = 0
+        mock_res.stdout = json.dumps(sample_json)
+
+        with patch.object(YTDLPDownloader, "is_ytdlp_available", return_value=True), \
+             patch("subprocess.run", return_value=mock_res):
+            formats = YTDLPDownloader.extract_media_formats("https://youtube.com/watch?v=123")
+            fmt_1080 = next(f for f in formats if f["quality"] == "1080")
+            # Chosen video size should be 370MB + 26MB audio = 396MB (not 664MB + 26MB = 690MB)
+            self.assertEqual(fmt_1080["filesize"], 370000000 + 26000000)
+
 
 if __name__ == "__main__":
     unittest.main()

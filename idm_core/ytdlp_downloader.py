@@ -49,6 +49,11 @@ class YTDLPDownloader:
         self.speed = 0.0
         self.eta = 0.0
 
+        self._completed_streams_bytes = 0
+        self._current_stream_total = 0
+        self._current_stream_downloaded = 0
+        self._last_stream_pct = 0.0
+
         self._process: Optional[subprocess.Popen] = None
         self._stop_event = threading.Event()
         self._pause_event = threading.Event()
@@ -121,6 +126,22 @@ class YTDLPDownloader:
             return []
 
     @classmethod
+    def _get_vcodec_priority(cls, vcodec: Optional[str]) -> int:
+        """Score video codec priority matching yt-dlp's default bestvideo preference."""
+        v = (vcodec or "").lower()
+        if "av01" in v or "av1" in v:
+            return 40
+        if "vp09.02" in v or "vp9.2" in v:
+            return 35
+        if "vp09" in v or "vp9" in v:
+            return 30
+        if "avc1" in v or "h264" in v:
+            return 20
+        if v != "none" and v != "":
+            return 10
+        return 0
+
+    @classmethod
     def _parse_formats_and_tiers(cls, data: Dict[str, Any], url: str) -> List[Dict[str, Any]]:
         """Unified parser ensuring 100% identical format definitions and file sizes across dropdown and dialogs."""
         formats = data.get("formats", [])
@@ -157,9 +178,25 @@ class YTDLPDownloader:
                 raw_sz = get_format_size(f)
                 tbr = f.get("tbr") or f.get("vbr") or 0
                 total_sz = raw_sz + (best_audio_sz if acodec == "none" else 0)
+                vcodec_score = cls._get_vcodec_priority(vcodec)
 
-                # Standard format preference: higher fps, then higher quality
-                if h not in tier_map or (fps > tier_map[h]["fps"]) or (fps == tier_map[h]["fps"] and raw_sz > tier_map[h]["raw_sz"]):
+                # Format preference matching yt-dlp:
+                # Higher fps > Higher codec efficiency (av01 > vp9 > avc1) > Bitrate/Size
+                is_better = False
+                if h not in tier_map:
+                    is_better = True
+                else:
+                    curr = tier_map[h]
+                    curr_score = curr.get("vcodec_score", 0)
+                    if fps > curr["fps"]:
+                        is_better = True
+                    elif fps == curr["fps"]:
+                        if vcodec_score > curr_score:
+                            is_better = True
+                        elif vcodec_score == curr_score and (raw_sz > curr["raw_sz"] or tbr > curr["tbr"]):
+                            is_better = True
+
+                if is_better:
                     label = f"{h}p"
                     if fps and fps > 30:
                         label += f" {int(fps)}fps"
@@ -181,6 +218,7 @@ class YTDLPDownloader:
                         "height": h,
                         "fps": fps,
                         "tbr": tbr,
+                        "vcodec_score": vcodec_score,
                         "quality": str(h),
                         "format": "MP4",
                         "raw_sz": raw_sz,
@@ -302,6 +340,11 @@ class YTDLPDownloader:
                     pass
 
     def _run_ytdlp(self):
+        self._completed_streams_bytes = 0
+        self._current_stream_total = 0
+        self._current_stream_downloaded = 0
+        self._last_stream_pct = 0.0
+
         bin_name = "yt-dlp" if shutil.which("yt-dlp") else "youtube-dl"
         dest_dir = os.path.dirname(self.save_path)
         os.makedirs(dest_dir, exist_ok=True)
@@ -437,17 +480,37 @@ class YTDLPDownloader:
         if not line:
             return
 
+        # Check for destination / new stream header transition
+        if "[download] Destination:" in line:
+            if self._current_stream_total > 0:
+                self._completed_streams_bytes += self._current_stream_total
+                self._current_stream_total = 0
+                self._current_stream_downloaded = 0
+                self._last_stream_pct = 0.0
+
         # [download]  45.2% of  120.50MiB at  4.52MiB/s ETA 00:14
         pct_match = re.search(r"(\d+(?:\.\d+)?)%", line)
         if pct_match:
             pct = float(pct_match.group(1))
+
+            # Detect stream transition if percentage resets (e.g. from 100% to 0% for audio)
+            if pct < (self._last_stream_pct - 20.0) and self._current_stream_total > 0:
+                self._completed_streams_bytes += self._current_stream_total
+                self._current_stream_total = 0
+                self._current_stream_downloaded = 0
+
+            self._last_stream_pct = pct
+
             size_match = re.search(r"of\s+(?:~\s*)?(\d+(?:\.\d+)?)\s*([KMGT]?i?B)", line, re.I)
             if size_match:
                 val = float(size_match.group(1))
                 unit = size_match.group(2).upper()
                 mult = {"B": 1, "KB": 1024, "KIB": 1024, "MB": 1024**2, "MIB": 1024**2, "GB": 1024**3, "GIB": 1024**3}.get(unit, 1024**2)
-                self.total_bytes = int(val * mult)
-                self.downloaded_bytes = int((pct / 100.0) * self.total_bytes)
+                self._current_stream_total = int(val * mult)
+                self._current_stream_downloaded = int((pct / 100.0) * self._current_stream_total)
+
+                self.downloaded_bytes = self._completed_streams_bytes + self._current_stream_downloaded
+                self.total_bytes = max(self.total_bytes, self._completed_streams_bytes + self._current_stream_total)
 
             speed_match = re.search(r"at\s+(\d+(?:\.\d+)?)\s*([KMGT]?i?B)/s", line, re.I)
             if speed_match:
