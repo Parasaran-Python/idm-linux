@@ -1,6 +1,6 @@
 /**
  * IDM Linux - Background Service Worker / Script
- * Intercepts downloads across all browsers (Firefox & Chrome) and provides Native Messaging Bridge.
+ * Intercepts downloads across all browsers (Firefox & Chrome) with full session cookies, headers, & Native Messaging Bridge.
  */
 
 const NATIVE_HOST = "com.idm.linux.native_host";
@@ -29,6 +29,40 @@ chrome.storage.local.get(["idmSettings"], (res) => {
     settings = Object.assign(settings, res.idmSettings);
   }
 });
+
+/**
+ * Retrieve current browser session cookies for a given URL
+ */
+async function getCookiesForUrl(url) {
+  if (!chrome.cookies || !chrome.cookies.getAll) return "";
+  try {
+    const cookies = await new Promise((resolve) => {
+      chrome.cookies.getAll({ url: url }, (c) => resolve(c || []));
+    });
+    return (cookies || []).map((c) => `${c.name}=${c.value}`).join("; ");
+  } catch (e) {
+    return "";
+  }
+}
+
+/**
+ * Build rich request headers matching the browser session
+ */
+async function buildDownloadHeaders(targetUrl, refererUrl = "") {
+  const cookieStr = await getCookiesForUrl(targetUrl);
+  const headers = {
+    "User-Agent": navigator.userAgent,
+    "Accept": "*/*",
+    "Accept-Language": navigator.language || "en-US,en;q=0.9",
+  };
+  if (refererUrl) {
+    headers["Referer"] = refererUrl;
+  }
+  if (cookieStr) {
+    headers["Cookie"] = cookieStr;
+  }
+  return headers;
+}
 
 /**
  * Send request to IDM Native Messaging Host
@@ -155,30 +189,29 @@ chrome.runtime.onInstalled.addListener(() => {
 });
 
 if (chrome.contextMenus && chrome.contextMenus.onClicked) {
-  chrome.contextMenus.onClicked.addListener((info, tab) => {
+  chrome.contextMenus.onClicked.addListener(async (info, tab) => {
     if (info.menuItemId === "idm_download_link") {
       const targetUrl = info.linkUrl || info.srcUrl || info.pageUrl;
       if (targetUrl) {
+        const headers = await buildDownloadHeaders(targetUrl, tab ? tab.url : "");
         sendNativeMessage({
           action: "add_download",
           url: targetUrl,
-          headers: {
-            "Referer": tab ? tab.url : "",
-            "User-Agent": navigator.userAgent
-          },
+          headers: headers,
           start_immediately: true
         });
       }
     } else if (info.menuItemId === "idm_download_all") {
       if (tab && tab.id) {
-        chrome.tabs.sendMessage(tab.id, { action: "extract_all_links" }, (response) => {
+        chrome.tabs.sendMessage(tab.id, { action: "extract_all_links" }, async (response) => {
           if (response && response.links && response.links.length > 0) {
             for (const link of response.links) {
+              const headers = await buildDownloadHeaders(link.url, tab.url);
               sendNativeMessage({
                 action: "add_download",
                 url: link.url,
                 filename: link.text || null,
-                headers: { "Referer": tab.url },
+                headers: headers,
                 start_immediately: false
               });
             }
@@ -194,7 +227,7 @@ if (chrome.contextMenus && chrome.contextMenus.onClicked) {
  */
 const interceptedDownloadIds = new Set();
 
-function handleDownloadIntercept(downloadItem) {
+async function handleDownloadIntercept(downloadItem) {
   if (!settings.interceptDownloads || !downloadItem || !downloadItem.url) {
     return;
   }
@@ -234,16 +267,15 @@ function handleDownloadIntercept(downloadItem) {
       });
     }
 
-    // Forward immediately to IDM Linux native app
+    const headers = await buildDownloadHeaders(downloadItem.url, downloadItem.referrer || downloadItem.url);
+
+    // Forward immediately to IDM Linux native app with full cookies and session headers
     sendNativeMessage({
       action: "add_download",
       url: downloadItem.url,
       filename: filename || null,
       total_bytes: downloadItem.fileSize > 0 ? downloadItem.fileSize : (downloadItem.totalBytes > 0 ? downloadItem.totalBytes : 0),
-      headers: {
-        "Referer": downloadItem.referrer || downloadItem.url,
-        "User-Agent": navigator.userAgent
-      },
+      headers: headers,
       start_immediately: true
     });
   }
@@ -278,16 +310,18 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   }
 
   if (request.action === "download_media") {
-    sendNativeMessage({
-      action: "add_download",
-      url: request.url,
-      filename: request.filename,
-      headers: {
-        "Referer": sender.tab ? sender.tab.url : window.location ? window.location.href : "",
-        "User-Agent": navigator.userAgent
-      },
-      start_immediately: true
-    }).then(sendResponse);
+    (async () => {
+      const pageUrl = sender.tab ? sender.tab.url : (window.location ? window.location.href : "");
+      const headers = await buildDownloadHeaders(request.url, pageUrl);
+      const res = await sendNativeMessage({
+        action: "add_download",
+        url: request.url,
+        filename: request.filename,
+        headers: headers,
+        start_immediately: true
+      });
+      sendResponse(res);
+    })();
     return true;
   }
 
