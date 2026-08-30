@@ -205,6 +205,14 @@ class MainWindow(QMainWindow):
         # Connect engine event callbacks
         self.engine.register_listener("download_progress", self._on_engine_progress)
         self.engine.register_listener("segment_update", self._on_engine_segment_update)
+        self.engine.register_listener("download_started", self._on_engine_download_started)
+
+    def _on_engine_download_started(self, data: dict):
+        dl_id = data.get("download_id")
+        if dl_id:
+            # Open individual download progress window
+            self._show_progress_dialog(dl_id)
+            self.refresh_downloads()
 
     def refresh_downloads(self):
         """Fetch updated downloads list and refresh table & stats."""

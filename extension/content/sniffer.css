@@ -1,68 +1,70 @@
 /* IDM Linux - Floating Video Download Bar Styles */
 
-.idm-video-panel-container {
-  position: absolute;
-  top: 12px;
-  right: 12px;
-  z-index: 2147483647;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  font-size: 13px;
-  user-select: none;
+.idm-floating-panel {
+  position: absolute !important;
+  top: 14px !important;
+  right: 14px !important;
+  z-index: 2147483647 !important;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif !important;
+  font-size: 13px !important;
+  user-select: none !important;
+  pointer-events: auto !important;
 }
 
-.idm-video-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  background: linear-gradient(180deg, #2b6cb0 0%, #1a365d 100%);
-  color: #ffffff;
-  border: 1px solid #4299e1;
-  border-radius: 4px;
-  padding: 6px 12px;
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
-  transition: background 0.15s ease, transform 0.1s ease;
+.idm-floating-btn {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  background: linear-gradient(180deg, #2b6cb0 0%, #1a365d 100%) !important;
+  color: #ffffff !important;
+  border: 1px solid #63b3ed !important;
+  border-radius: 6px !important;
+  padding: 8px 14px !important;
+  font-size: 13px !important;
+  font-weight: 700 !important;
+  cursor: pointer !important;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.6) !important;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
 }
 
-.idm-video-btn:hover {
-  background: linear-gradient(180deg, #3182ce 0%, #2b6cb0 100%);
-  transform: translateY(-1px);
+.idm-floating-btn:hover {
+  background: linear-gradient(180deg, #3182ce 0%, #2b6cb0 100%) !important;
+  box-shadow: 0 6px 20px rgba(49, 130, 206, 0.5) !important;
+  transform: translateY(-2px) !important;
 }
 
-.idm-video-btn:active {
-  transform: translateY(0);
+.idm-floating-btn:active {
+  transform: translateY(0) !important;
 }
 
-.idm-icon {
-  font-size: 14px;
+.idm-svg-icon {
+  fill: #ecc94b !important;
 }
 
 .idm-dropdown-menu {
   display: none;
-  position: absolute;
-  top: 100%;
-  right: 0;
-  margin-top: 4px;
-  min-width: 220px;
-  background: #1a202c;
-  border: 1px solid #4a5568;
-  border-radius: 6px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
-  padding: 4px 0;
-  z-index: 2147483647;
+  position: absolute !important;
+  top: 100% !important;
+  right: 0 !important;
+  margin-top: 6px !important;
+  min-width: 260px !important;
+  background: #1a202c !important;
+  border: 1px solid #4a5568 !important;
+  border-radius: 8px !important;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.8) !important;
+  padding: 6px 0 !important;
+  z-index: 2147483647 !important;
 }
 
 .idm-dropdown-menu.idm-show {
-  display: block;
-  animation: idm-fade-in 0.15s ease-out;
+  display: block !important;
+  animation: idm-fade-in 0.18s cubic-bezier(0.16, 1, 0.3, 1) !important;
 }
 
 @keyframes idm-fade-in {
   from {
     opacity: 0;
-    transform: translateY(-4px);
+    transform: translateY(-6px);
   }
   to {
     opacity: 1;
@@ -71,26 +73,28 @@
 }
 
 .idm-dropdown-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 8px 12px;
-  color: #e2e8f0;
-  cursor: pointer;
-  font-size: 12px;
-  transition: background 0.1s ease;
+  display: flex !important;
+  justify-content: space-between !important;
+  align-items: center !important;
+  padding: 10px 14px !important;
+  color: #edf2f7 !important;
+  cursor: pointer !important;
+  font-size: 12px !important;
+  font-weight: 500 !important;
+  transition: background 0.12s ease !important;
 }
 
 .idm-dropdown-item:hover {
-  background: #2b6cb0;
-  color: #ffffff;
+  background: #2b6cb0 !important;
+  color: #ffffff !important;
 }
 
 .idm-item-badge {
-  background: #4a5568;
-  color: #edf2f7;
-  padding: 2px 6px;
-  border-radius: 3px;
-  font-size: 10px;
-  font-weight: bold;
+  background: #2d3748 !important;
+  color: #ecc94b !important;
+  padding: 3px 8px !important;
+  border-radius: 4px !important;
+  font-size: 11px !important;
+  font-weight: bold !important;
+  border: 1px solid #4a5568 !important;
 }
