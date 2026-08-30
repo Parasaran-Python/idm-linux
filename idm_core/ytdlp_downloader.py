@@ -234,14 +234,30 @@ class YTDLPDownloader:
         if shutil.which("node"):
             cmd.extend(["--js-runtimes", f"node:{shutil.which('node')}"])
 
-        # Add firefox browser cookies if available to authenticate streams
-        firefox_dir = os.path.expanduser("~/.mozilla/firefox")
-        if os.path.exists(firefox_dir):
-            cmd.extend(["--cookies-from-browser", "firefox"])
+        # Add User-Agent and Referer if present
+        if self.headers:
+            if "User-Agent" in self.headers:
+                cmd.extend(["--user-agent", self.headers["User-Agent"]])
+            if "Referer" in self.headers:
+                cmd.extend(["--referer", self.headers["Referer"]])
 
         cmd.append(self.url)
 
         self.log(f"Starting video stream download with {bin_name} (quality: {q_str or 'best'})...")
+
+        if self.on_progress:
+            try:
+                self.on_progress(self.download_id, {
+                    "download_id": self.download_id,
+                    "status": "downloading",
+                    "speed": 0,
+                    "eta": 0,
+                    "downloaded_bytes": 0,
+                    "total_bytes": self.total_bytes,
+                    "progress_pct": 0.0
+                })
+            except Exception:
+                pass
 
         last_error_line = ""
         try:

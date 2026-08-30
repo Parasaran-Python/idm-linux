@@ -104,11 +104,10 @@ class DownloadTableWidget(QTableWidget):
             fname_item = self.item(row, 0)
             if not fname_item:
                 fname_item = QTableWidgetItem(fname)
-                fname_item.setData(Qt.ItemDataRole.UserRole, dl_id)
                 self.setItem(row, 0, fname_item)
             elif fname_item.text() != fname:
                 fname_item.setText(fname)
-                fname_item.setData(Qt.ItemDataRole.UserRole, dl_id)
+            fname_item.setData(Qt.ItemDataRole.UserRole, dl_id)
 
             # 1: Size
             total = dl.get("total_bytes", 0)
