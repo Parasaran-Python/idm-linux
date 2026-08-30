@@ -309,6 +309,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true;
   }
 
+  if (request.action === "query_media_formats") {
+    sendNativeMessage({ action: "query_media_formats", url: request.url }).then(sendResponse);
+    return true;
+  }
+
   if (request.action === "download_media") {
     (async () => {
       const pageUrl = sender.tab ? sender.tab.url : (window.location ? window.location.href : "");

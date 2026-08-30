@@ -15,6 +15,27 @@
   let activePlayerEl = null;
   let userDismissed = false;
   let customPosition = null; // { x, y }
+  const cachedFormatsForUrl = new Map();
+
+  function fetchFormatsForCurrentPage() {
+    const currentUrl = window.location.href;
+    if (cachedFormatsForUrl.has(currentUrl)) return;
+
+    try {
+      chrome.runtime.sendMessage({ action: "query_media_formats", url: currentUrl }, (response) => {
+        if (response && response.formats && response.formats.length > 0) {
+          cachedFormatsForUrl.set(currentUrl, response.formats);
+          if (floatingBar) {
+            const openMenu = floatingBar.querySelector(".idm-grabber-menu.idm-menu-open");
+            if (openMenu) {
+              const populateFunc = floatingBar.__idmPopulateMenu;
+              if (populateFunc) populateFunc();
+            }
+          }
+        }
+      });
+    } catch (e) {}
+  }
 
   /**
    * Inject Main-World Page Hook Script
@@ -81,11 +102,25 @@
     closeBtn.className = "idm-grabber-close-btn";
     closeBtn.title = "Dismiss IDM download panel";
     closeBtn.innerHTML = "&times;";
+    closeBtn.addEventListener("pointerdown", (e) => {
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+    });
+    closeBtn.addEventListener("mousedown", (e) => {
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+    });
     closeBtn.addEventListener("click", (e) => {
       e.stopPropagation();
+      e.stopImmediatePropagation();
       e.preventDefault();
       userDismissed = true;
+      sessionStorage.setItem("__idm_dismissed_" + window.location.pathname, "true");
       container.style.display = "none";
+      if (floatingBar) {
+        floatingBar.remove();
+        floatingBar = null;
+      }
     });
 
     wrapper.appendChild(dragHandle);
@@ -98,76 +133,69 @@
     function populateMenu() {
       menu.innerHTML = "";
       const currentUrl = window.location.href;
-      const isYouTube = window.location.hostname.includes("youtube.com");
+      let items = [];
 
-      // Default stream formats
-      const items = isYouTube
-        ? [
-            { label: "4K 2160p 60fps (Ultra HD)", format: "MP4", quality: "2160", url: currentUrl },
-            { label: "2K 1440p 60fps (Quad HD)", format: "MP4", quality: "1440", url: currentUrl },
-            { label: "1080p 60fps (Full HD)", format: "MP4", quality: "1080", url: currentUrl },
-            { label: "720p HD", format: "MP4", quality: "720", url: currentUrl },
-            { label: "480p SD", format: "MP4", quality: "480", url: currentUrl },
-            { label: "360p Medium", format: "MP4", quality: "360", url: currentUrl },
-            { label: "Audio Only (128k MP3)", format: "MP3", quality: "audio", url: currentUrl }
-          ]
-        : [
-            { label: "Original Video (Highest Quality)", format: "MP4", quality: "2160", url: currentUrl },
-            { label: "1080p (Full HD)", format: "MP4", quality: "1080", url: currentUrl },
-            { label: "720p HD", format: "MP4", quality: "720", url: currentUrl },
-            { label: "480p SD", format: "MP4", quality: "480", url: currentUrl },
-            { label: "Audio Track (MP3)", format: "MP3", quality: "audio", url: currentUrl }
-          ];
+      // 1. If backend dynamic formats exist for this video, use exact real formats
+      if (cachedFormatsForUrl.has(currentUrl) && cachedFormatsForUrl.get(currentUrl).length > 0) {
+        items = [...cachedFormatsForUrl.get(currentUrl)];
+      } else {
+        // Trigger background format resolution
+        fetchFormatsForCurrentPage();
 
-      // Add sniffed media streams
-      if (capturedStreams.size > 0) {
-        capturedStreams.forEach((meta, streamUrl) => {
-          let label = meta.format || "Media Stream";
-          if (streamUrl.includes(".m3u8")) label = "HLS Video Stream (.m3u8)";
-          else if (streamUrl.includes(".mpd")) label = "DASH Video Stream (.mpd)";
-          else if (streamUrl.includes(".mp4")) label = "Direct MP4 Stream";
-          else if (streamUrl.includes(".webm")) label = "WebM Stream";
-          items.unshift({ label: label, format: "MP4", quality: "1080", url: streamUrl });
-        });
+        // 2. Add in-page sniffed media streams (HLS, DASH, direct MP4)
+        if (capturedStreams.size > 0) {
+          capturedStreams.forEach((meta, streamUrl) => {
+            let label = meta.format || "Media Stream";
+            if (streamUrl.includes(".m3u8")) label = "HLS Master Stream (.m3u8)";
+            else if (streamUrl.includes(".mpd")) label = "DASH Video Stream (.mpd)";
+            else if (streamUrl.includes(".mp4")) label = "Direct MP4 Stream";
+            else if (streamUrl.includes(".webm")) label = "WebM Stream";
+            items.push({ label: label, format: "MP4", quality: "best", url: streamUrl });
+          });
+        }
+
+        // If empty, show loading indicator while fetching
+        if (items.length === 0) {
+          items.push({ label: "⏳ Extracting available formats...", format: "SCAN", quality: "best", url: currentUrl, disabled: true });
+        }
       }
 
       items.forEach((item) => {
         const row = document.createElement("div");
-        row.className = "idm-grabber-menu-item";
+        row.className = "idm-grabber-menu-item" + (item.disabled ? " idm-menu-item-disabled" : "");
         row.innerHTML = `
           <span class="idm-menu-item-text">${item.label}</span>
           <span class="idm-menu-item-badge">${item.format}</span>
         `;
-        row.addEventListener("click", (e) => {
-          e.stopPropagation();
-          e.preventDefault();
-          menu.classList.remove("idm-menu-open");
+        if (!item.disabled) {
+          row.addEventListener("click", (e) => {
+            e.stopPropagation();
+            e.preventDefault();
+            menu.classList.remove("idm-menu-open");
 
-          const title = getMediaTitle();
-          const filename = `${title}.${item.format.toLowerCase()}`;
+            const title = getMediaTitle();
+            const filename = `${title}.${item.format.toLowerCase()}`;
 
-          chrome.runtime.sendMessage({
-            action: "download_media",
-            url: item.url,
-            filename: filename,
-            quality: item.quality,
-            format: item.format.toLowerCase()
+            chrome.runtime.sendMessage({
+              action: "download_media",
+              url: item.url,
+              filename: filename,
+              quality: item.quality,
+              format: item.format.toLowerCase()
+            });
           });
-        });
+        }
         menu.appendChild(row);
       });
     }
 
-    // Dragging Logic
+    // Dragging Logic - attached strictly to drag handle
     let isDragging = false;
     let dragStartX = 0, dragStartY = 0;
     let initialLeft = 0, initialTop = 0;
     let hasMoved = false;
 
     function onPointerDown(e) {
-      if (e.target.closest(".idm-grabber-close-btn") || e.target.closest(".idm-grabber-menu")) {
-        return;
-      }
       isDragging = true;
       hasMoved = false;
       dragStartX = e.clientX;
@@ -203,7 +231,7 @@
       window.removeEventListener("pointerup", onPointerUp);
     }
 
-    wrapper.addEventListener("pointerdown", onPointerDown);
+    dragHandle.addEventListener("pointerdown", onPointerDown);
 
     button.addEventListener("click", (e) => {
       e.stopPropagation();
@@ -221,9 +249,11 @@
 
     container.appendChild(wrapper);
     container.appendChild(menu);
+    container.__idmPopulateMenu = populateMenu;
 
     (document.fullscreenElement || document.body || document.documentElement).appendChild(container);
     floatingBar = container;
+    fetchFormatsForCurrentPage();
     return container;
   }
 
@@ -231,8 +261,11 @@
    * Position the floating bar over the active video element
    */
   function repositionBar() {
-    if (userDismissed) {
-      if (floatingBar) floatingBar.style.display = "none";
+    if (userDismissed || sessionStorage.getItem("__idm_dismissed_" + window.location.pathname) === "true") {
+      if (floatingBar) {
+        floatingBar.remove();
+        floatingBar = null;
+      }
       return;
     }
 

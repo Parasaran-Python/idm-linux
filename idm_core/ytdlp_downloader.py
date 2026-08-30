@@ -69,6 +69,88 @@ class YTDLPDownloader:
         ]
         return any(d in lower for d in domains)
 
+    @classmethod
+    def extract_media_formats(cls, url: str) -> List[Dict[str, Any]]:
+        """Dynamically extract authentic available formats for any video URL."""
+        if not cls.is_ytdlp_available() or not url:
+            return []
+
+        bin_name = "yt-dlp" if shutil.which("yt-dlp") else "youtube-dl"
+        cmd = [
+            bin_name,
+            "-J",
+            "--no-playlist",
+            "--no-check-certificates",
+            "--geo-bypass",
+            "--remote-components", "ejs:github"
+        ]
+
+        if shutil.which("node"):
+            cmd.extend(["--js-runtimes", f"node:{shutil.which('node')}"])
+
+        cmd.append(url)
+
+        try:
+            res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, timeout=12)
+            if res.returncode != 0 or not res.stdout:
+                return []
+
+            data = json.loads(res.stdout)
+            formats = data.get("formats", [])
+            seen_heights = set()
+            video_formats = []
+            has_audio = False
+
+            for f in formats:
+                h = f.get("height")
+                vcodec = f.get("vcodec", "none")
+                acodec = f.get("acodec", "none")
+                if acodec != "none":
+                    has_audio = True
+
+                if h and vcodec != "none" and h not in seen_heights:
+                    seen_heights.add(h)
+                    fps = f.get("fps", 30)
+                    filesize = f.get("filesize") or f.get("filesize_approx") or 0
+                    label = f"{h}p"
+                    if fps and fps > 30:
+                        label += f" {fps}fps"
+                    if h >= 2160:
+                        label += " (4K Ultra HD)"
+                    elif h >= 1440:
+                        label += " (2K Quad HD)"
+                    elif h >= 1080:
+                        label += " (Full HD)"
+                    elif h >= 720:
+                        label += " (HD)"
+                    else:
+                        label += " (SD)"
+
+                    video_formats.append({
+                        "label": label,
+                        "height": h,
+                        "quality": str(h),
+                        "format": "MP4",
+                        "filesize": filesize,
+                        "url": url
+                    })
+
+            video_formats.sort(key=lambda x: x["height"], reverse=True)
+
+            if has_audio:
+                video_formats.append({
+                    "label": "Audio Only (MP3)",
+                    "height": 0,
+                    "quality": "audio",
+                    "format": "MP3",
+                    "filesize": 0,
+                    "url": url
+                })
+
+            return video_formats
+        except Exception:
+            return []
+
     def log(self, msg: str):
         if self.on_log:
             try:
