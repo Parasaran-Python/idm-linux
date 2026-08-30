@@ -85,10 +85,10 @@ class YTDLPDownloader:
 
     @classmethod
     def _get_extractor_args(cls, url: str) -> List[str]:
-        """Configure optimal extractor arguments to prevent SABR missing format fallbacks."""
+        """Configure optimal extractor arguments to prevent 403 Forbidden and SABR format issues."""
         lower = (url or "").lower()
         if "youtube.com" in lower or "youtu.be" in lower:
-            return ["--extractor-args", "youtube:player_client=android_vr,ios,mweb,web"]
+            return ["--extractor-args", "youtube:player_client=android,mweb,web_embedded,web"]
         return []
 
     @classmethod
