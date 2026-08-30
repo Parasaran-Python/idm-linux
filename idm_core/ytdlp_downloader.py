@@ -97,8 +97,7 @@ class YTDLPDownloader:
 
             data = json.loads(res.stdout)
             formats = data.get("formats", [])
-            seen_heights = set()
-            video_formats = []
+            tier_map = {}
             has_audio = False
 
             for f in formats:
@@ -108,33 +107,40 @@ class YTDLPDownloader:
                 if acodec != "none":
                     has_audio = True
 
-                if h and vcodec != "none" and h not in seen_heights:
-                    seen_heights.add(h)
-                    fps = f.get("fps", 30)
+                if h and vcodec != "none" and h > 0:
+                    fps = f.get("fps") or 30
                     filesize = f.get("filesize") or f.get("filesize_approx") or 0
-                    label = f"{h}p"
-                    if fps and fps > 30:
-                        label += f" {fps}fps"
-                    if h >= 2160:
-                        label += " (4K Ultra HD)"
-                    elif h >= 1440:
-                        label += " (2K Quad HD)"
-                    elif h >= 1080:
-                        label += " (Full HD)"
-                    elif h >= 720:
-                        label += " (HD)"
-                    else:
-                        label += " (SD)"
+                    tbr = f.get("tbr") or f.get("vbr") or 0
 
-                    video_formats.append({
-                        "label": label,
-                        "height": h,
-                        "quality": str(h),
-                        "format": "MP4",
-                        "filesize": filesize,
-                        "url": url
-                    })
+                    if h not in tier_map or (fps > tier_map[h]["fps"]) or (fps == tier_map[h]["fps"] and tbr > tier_map[h]["tbr"]):
+                        label = f"{h}p"
+                        if fps and fps > 30:
+                            label += f" {int(fps)}fps"
+                        if h >= 4320:
+                            label += " (8K Ultra HD)"
+                        elif h >= 2160:
+                            label += " (4K Ultra HD)"
+                        elif h >= 1440:
+                            label += " (2K Quad HD)"
+                        elif h >= 1080:
+                            label += " (Full HD)"
+                        elif h >= 720:
+                            label += " (HD)"
+                        else:
+                            label += " (SD)"
 
+                        tier_map[h] = {
+                            "label": label,
+                            "height": h,
+                            "fps": fps,
+                            "tbr": tbr,
+                            "quality": str(h),
+                            "format": "MP4",
+                            "filesize": filesize,
+                            "url": url
+                        }
+
+            video_formats = list(tier_map.values())
             video_formats.sort(key=lambda x: x["height"], reverse=True)
 
             if has_audio:
