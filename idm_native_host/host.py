@@ -1,0 +1,129 @@
+#!/usr/bin/env python3
+"""
+IDM Linux Browser Native Messaging Host (Chrome / Firefox Stdio Bridge)
+"""
+
+import json
+import os
+import struct
+import subprocess
+import sys
+import time
+from typing import Any, Dict, Optional
+from idm_ipc.socket_client import IPCClient
+
+HOST_NAME = "com.idm.linux.native_host"
+
+
+def read_native_message(stream=None) -> Optional[Dict[str, Any]]:
+    """Read a 32-bit little-endian length-prefixed JSON message from stream (default: sys.stdin.buffer)."""
+    inp = stream or sys.stdin.buffer
+    raw_len = inp.read(4)
+    if not raw_len or len(raw_len) < 4:
+        return None
+    msg_len = struct.unpack("<I", raw_len)[0]
+    if msg_len == 0 or msg_len > 16 * 1024 * 1024:
+        return None
+    data = inp.read(msg_len)
+    if len(data) < msg_len:
+        return None
+    return json.loads(data.decode("utf-8"))
+
+
+def send_native_message(payload: Dict[str, Any], stream=None):
+    """Write a 32-bit little-endian length-prefixed JSON message to stream (default: sys.stdout.buffer)."""
+    out = stream or sys.stdout.buffer
+    json_bytes = json.dumps(payload).encode("utf-8")
+    header = struct.pack("<I", len(json_bytes))
+    out.write(header + json_bytes)
+    out.flush()
+
+
+def ensure_idm_running(client: IPCClient) -> bool:
+    """Check if IDM daemon or GUI is running; if not, spawn daemon in background."""
+    if client.is_server_running():
+        return True
+
+    # Try launching background daemon or GUI
+    try:
+        cmd = [sys.executable, "-m", "idm_gui.app", "--minimized"]
+        subprocess.Popen(
+            cmd,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True
+        )
+        # Wait up to 3 seconds for socket to appear
+        for _ in range(15):
+            time.sleep(0.2)
+            if client.is_server_running():
+                return True
+    except Exception:
+        pass
+
+    # Fallback to daemon directly
+    try:
+        cmd = [sys.executable, "-m", "idm_ipc.daemon"]
+        subprocess.Popen(
+            cmd,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True
+        )
+        for _ in range(10):
+            time.sleep(0.2)
+            if client.is_server_running():
+                return True
+    except Exception:
+        pass
+
+    return False
+
+
+def handle_browser_message(msg: Dict[str, Any], ipc_client: Optional[IPCClient] = None) -> Dict[str, Any]:
+    """Process message received from browser extension and dispatch to IPC."""
+    action = msg.get("action", "")
+    if action == "ping":
+        is_running = ipc_client.is_server_running() if ipc_client else False
+        return {
+            "status": "ok",
+            "pong": True,
+            "app": "IDM Linux",
+            "version": "1.0.0",
+            "engine_running": is_running
+        }
+
+    client = ipc_client or IPCClient()
+    if not client.is_server_running():
+        ensure_idm_running(client)
+
+    # Forward to IDM IPC
+    if action in ["add_download", "intercept", "download_video"]:
+        forward_payload = dict(msg)
+        if action in ["intercept", "download_video"]:
+            forward_payload["action"] = "add_download"
+        return client.send_request(forward_payload)
+    else:
+        return client.send_request(msg)
+
+
+def main():
+    client = IPCClient()
+    while True:
+        try:
+            msg = read_native_message()
+            if msg is None:
+                break
+            response = handle_browser_message(msg, client)
+            send_native_message(response)
+        except (KeyboardInterrupt, BrokenPipeError):
+            break
+        except Exception as e:
+            try:
+                send_native_message({"status": "error", "error": str(e)})
+            except Exception:
+                pass
+
+
+if __name__ == "__main__":
+    main()
