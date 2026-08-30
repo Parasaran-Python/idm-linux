@@ -43,8 +43,14 @@ exec "\${PYTHON_BIN}" -m idm_ipc.daemon "\$@"
 EOF
 chmod +x "${BIN_DIR}/idm-daemon"
 
-# 4. Install Desktop File and Icon
-cp "${REPO_DIR}/extension/icons/icon128.png" "${ICON_DIR}/idm-linux.png"
+# 4. Install Desktop File and Multi-Resolution Icons
+for sz in 16 32 48 128 256 512; do
+    target_dir="${HOME}/.local/share/icons/hicolor/${sz}x${sz}/apps"
+    mkdir -p "${target_dir}"
+    if [ -f "${REPO_DIR}/extension/icons/icon${sz}.png" ]; then
+        cp "${REPO_DIR}/extension/icons/icon${sz}.png" "${target_dir}/idm-linux.png"
+    fi
+done
 cp "${REPO_DIR}/scripts/idm-linux.desktop" "${DESKTOP_DIR}/idm-linux.desktop"
 
 # 5. Register Browser Native Messaging Hosts

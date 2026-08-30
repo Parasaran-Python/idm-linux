@@ -7,11 +7,24 @@ from PyQt6.QtGui import QColor, QIcon, QImage, QPainter, QPixmap
 from PyQt6.QtWidgets import QMenu, QSystemTrayIcon
 
 
+def create_app_icon() -> QIcon:
+    """Create multi-resolution application icon."""
+    icon = QIcon()
+    icons_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "extension", "icons")
+    for sz in [16, 32, 48, 128, 256, 512]:
+        p = os.path.join(icons_dir, f"icon{sz}.png")
+        if os.path.exists(p):
+            icon.addFile(p)
+    return icon
+
+
 def create_tray_icon_pixmap() -> QPixmap:
     """Draw clean IDM emblem tray icon."""
-    icon_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "extension", "icons", "icon48.png")
-    if os.path.exists(icon_path):
-        return QPixmap(icon_path)
+    icons_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "extension", "icons")
+    for sz in ["icon48.png", "icon32.png", "icon128.png", "icon16.png"]:
+        icon_path = os.path.join(icons_dir, sz)
+        if os.path.exists(icon_path):
+            return QPixmap(icon_path)
     
     # Dynamic fallback
     pixmap = QPixmap(32, 32)

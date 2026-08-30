@@ -22,8 +22,11 @@ body {
   gap: 8px;
 }
 
-.logo-icon {
-  font-size: 18px;
+.logo-img {
+  width: 22px;
+  height: 22px;
+  border-radius: 5px;
+  object-fit: contain;
 }
 
 .title {
