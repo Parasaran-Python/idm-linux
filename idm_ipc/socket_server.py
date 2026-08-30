@@ -115,10 +115,16 @@ class IPCServer:
                 self.engine.notify("show_gui", {})
                 return {"status": "ok", "message": "GUI window raised"}
 
-            elif action == "add_download":
+            elif action in ["add_download", "intercept"]:
                 url = msg.get("url")
                 if not url:
                     return {"status": "error", "error": "URL is required"}
+
+                # If GUI is active and show_dialog is requested (default for browser), trigger DownloadInfoDialog prompt
+                if msg.get("show_dialog", True) and "download_requested" in self.engine._listeners and self.engine._listeners["download_requested"]:
+                    self.engine.notify("download_requested", msg)
+                    return {"status": "ok", "message": "download_requested"}
+
                 dl_id = self.engine.add_download(
                     url=url,
                     filename=msg.get("filename"),

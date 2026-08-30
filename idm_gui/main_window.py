@@ -39,6 +39,7 @@ class EngineEventBridge(QObject):
     download_progress = pyqtSignal(dict)
     segment_update = pyqtSignal(dict)
     download_started = pyqtSignal(dict)
+    download_requested = pyqtSignal(dict)
     show_gui = pyqtSignal(dict)
 
 
@@ -217,13 +218,66 @@ class MainWindow(QMainWindow):
         self.bridge.download_progress.connect(self._on_engine_progress)
         self.bridge.segment_update.connect(self._on_engine_segment_update)
         self.bridge.download_started.connect(self._on_engine_download_started)
+        self.bridge.download_requested.connect(self._handle_download_requested)
         self.bridge.show_gui.connect(self._on_engine_show_gui)
 
         # Connect engine event callbacks to bridge
         self.engine.register_listener("download_progress", lambda d: self.bridge.download_progress.emit(d))
         self.engine.register_listener("segment_update", lambda d: self.bridge.segment_update.emit(d))
         self.engine.register_listener("download_started", lambda d: self.bridge.download_started.emit(d))
+        self.engine.register_listener("download_requested", lambda d: self.bridge.download_requested.emit(d))
         self.engine.register_listener("show_gui", lambda d: self.bridge.show_gui.emit(d))
+
+    def _handle_download_requested(self, data: dict):
+        try:
+            url = data.get("url", "")
+            if not url:
+                return
+
+            raw_filename = data.get("filename", "")
+            headers = data.get("headers", {})
+            quality = data.get("quality")
+            if quality and "quality" not in headers:
+                headers["quality"] = quality
+
+            total_bytes = data.get("total_bytes", 0)
+            category = data.get("category", "")
+            if not category or category == "General":
+                category = self.engine.category_manager.get_category_for_filename(raw_filename) if raw_filename else "General"
+
+            dest_dir = self.engine.category_manager.get_destination_directory(category)
+            save_path = data.get("save_path") or os.path.join(dest_dir, raw_filename or "download")
+
+            # Create and display DownloadInfoDialog in foreground
+            dlg = DownloadInfoDialog(
+                url=url,
+                filename=raw_filename,
+                save_path=save_path,
+                category=category,
+                file_size=total_bytes,
+                parent=None
+            )
+            dlg.setWindowFlags(Qt.WindowType.Window | Qt.WindowType.WindowStaysOnTopHint)
+            dlg.show()
+            dlg.raise_()
+            dlg.activateWindow()
+
+            if dlg.exec():
+                res = dlg.get_data()
+                start_imm = res.get("start_immediately", True)
+                dl_id = self.engine.add_download(
+                    url=res["url"],
+                    filename=res["filename"],
+                    save_path=res["save_path"],
+                    category=res["category"],
+                    headers=headers,
+                    start_immediately=start_imm
+                )
+                if start_imm and dl_id:
+                    self._show_progress_dialog(dl_id)
+                self.refresh_downloads()
+        except Exception as e:
+            print(f"[IDM Error] _handle_download_requested failed: {e}", file=sys.stderr)
 
     def _on_engine_show_gui(self, data: dict):
         self.setWindowState(self.windowState() & ~Qt.WindowState.WindowMinimized | Qt.WindowState.WindowActive)

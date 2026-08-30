@@ -103,6 +103,8 @@
       // Default stream formats
       const items = isYouTube
         ? [
+            { label: "4K 2160p 60fps (Ultra HD)", format: "MP4", quality: "2160", url: currentUrl },
+            { label: "2K 1440p 60fps (Quad HD)", format: "MP4", quality: "1440", url: currentUrl },
             { label: "1080p 60fps (Full HD)", format: "MP4", quality: "1080", url: currentUrl },
             { label: "720p HD", format: "MP4", quality: "720", url: currentUrl },
             { label: "480p SD", format: "MP4", quality: "480", url: currentUrl },
@@ -110,7 +112,8 @@
             { label: "Audio Only (128k MP3)", format: "MP3", quality: "audio", url: currentUrl }
           ]
         : [
-            { label: "Original Video (Direct Stream)", format: "MP4", quality: "1080", url: currentUrl },
+            { label: "Original Video (Highest Quality)", format: "MP4", quality: "2160", url: currentUrl },
+            { label: "1080p (Full HD)", format: "MP4", quality: "1080", url: currentUrl },
             { label: "720p HD", format: "MP4", quality: "720", url: currentUrl },
             { label: "480p SD", format: "MP4", quality: "480", url: currentUrl },
             { label: "Audio Track (MP3)", format: "MP3", quality: "audio", url: currentUrl }
