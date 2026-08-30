@@ -5,7 +5,7 @@ Complete IDM Main Window Interface with Classic Toolbar, Categories & Table
 import os
 import sys
 from typing import Dict, List, Optional
-from PyQt6.QtCore import QPoint, QSize, Qt, QTimer
+from PyQt6.QtCore import QObject, QPoint, QSize, Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QAction, QIcon, QKeySequence
 from PyQt6.QtWidgets import (
     QApplication,
@@ -31,6 +31,14 @@ from idm_gui.dialogs.queue_scheduler_dialog import QueueSchedulerDialog
 from idm_gui.styles import IDM_DARK_THEME
 from idm_gui.widgets.category_tree import CategoryTreeWidget
 from idm_gui.widgets.download_table import DownloadTableWidget, format_bytes, format_speed
+
+
+class EngineEventBridge(QObject):
+    """Thread-safe event bridge using Qt queued connections to marshal engine events to GUI thread."""
+    download_progress = pyqtSignal(dict)
+    segment_update = pyqtSignal(dict)
+    download_started = pyqtSignal(dict)
+    show_gui = pyqtSignal(dict)
 
 
 class MainWindow(QMainWindow):
@@ -202,14 +210,21 @@ class MainWindow(QMainWindow):
         btn_stop_q.triggered.connect(self.stop_queue)
 
     def _setup_events(self):
-        # Connect engine event callbacks
-        self.engine.register_listener("download_progress", self._on_engine_progress)
-        self.engine.register_listener("segment_update", self._on_engine_segment_update)
-        self.engine.register_listener("download_started", self._on_engine_download_started)
-        self.engine.register_listener("show_gui", self._on_engine_show_gui)
+        # Create Qt thread bridge
+        self.bridge = EngineEventBridge(self)
+        self.bridge.download_progress.connect(self._on_engine_progress)
+        self.bridge.segment_update.connect(self._on_engine_segment_update)
+        self.bridge.download_started.connect(self._on_engine_download_started)
+        self.bridge.show_gui.connect(self._on_engine_show_gui)
+
+        # Connect engine event callbacks to bridge
+        self.engine.register_listener("download_progress", lambda d: self.bridge.download_progress.emit(d))
+        self.engine.register_listener("segment_update", lambda d: self.bridge.segment_update.emit(d))
+        self.engine.register_listener("download_started", lambda d: self.bridge.download_started.emit(d))
+        self.engine.register_listener("show_gui", lambda d: self.bridge.show_gui.emit(d))
 
     def _on_engine_show_gui(self, data: dict):
-        self.showNormal()
+        self.setWindowState(self.windowState() & ~Qt.WindowState.WindowMinimized | Qt.WindowState.WindowActive)
         self.show()
         self.raise_()
         self.activateWindow()
