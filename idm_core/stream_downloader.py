@@ -69,6 +69,47 @@ class HLSParser:
         with urllib.request.urlopen(req, timeout=15) as resp:
             return resp.read().decode("utf-8", errors="ignore")
 
+    @classmethod
+    def probe_stream_info(cls, m3u8_url: str, headers: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
+        """Estimate total stream duration, bitrate, and filesize for an HLS playlist."""
+        try:
+            parser = cls(m3u8_url, headers=headers)
+            content = parser._fetch_text(m3u8_url)
+            lines = [line.strip() for line in content.splitlines() if line.strip()]
+
+            bandwidth = 0
+            variant_url = m3u8_url
+            if any(line.startswith("#EXT-X-STREAM-INF") for line in lines):
+                for i, line in enumerate(lines):
+                    if line.startswith("#EXT-X-STREAM-INF"):
+                        match = re.search(r"BANDWIDTH=(\d+)", line)
+                        bw = int(match.group(1)) if match else 0
+                        if bw > bandwidth and i + 1 < len(lines) and not lines[i + 1].startswith("#"):
+                            bandwidth = bw
+                            variant_url = urllib.parse.urljoin(m3u8_url, lines[i + 1])
+                if variant_url != m3u8_url:
+                    content = parser._fetch_text(variant_url)
+                    lines = [line.strip() for line in content.splitlines() if line.strip()]
+
+            total_duration = 0.0
+            for line in lines:
+                if line.startswith("#EXTINF:"):
+                    match = re.search(r"#EXTINF:([\d.]+)", line)
+                    if match:
+                        total_duration += float(match.group(1))
+
+            if not bandwidth:
+                bandwidth = 2500000  # Default fallback 2.5 Mbps
+
+            estimated_size = int((bandwidth / 8) * total_duration) if total_duration > 0 else 0
+            return {
+                "duration": total_duration,
+                "bandwidth": bandwidth,
+                "filesize": estimated_size
+            }
+        except Exception:
+            return {"duration": 0, "bandwidth": 0, "filesize": 0}
+
 
 class StreamDownloader:
     def __init__(
@@ -172,6 +213,29 @@ class StreamDownloader:
             self._finalize_stream()
 
         except Exception as e:
+            if shutil.which("ffmpeg") and not self._stop_event.is_set():
+                self.log(f"Direct segment parsing encountered '{e}'. Falling back to ffmpeg stream capture...")
+                try:
+                    os.makedirs(os.path.dirname(os.path.abspath(self.save_path)), exist_ok=True)
+                    cmd = ["ffmpeg", "-y"]
+                    if self.headers:
+                        hdr_str = "".join(f"{k}: {v}\r\n" for k, v in self.headers.items() if k.lower() in ["user-agent", "referer", "cookie"])
+                        if hdr_str:
+                            cmd.extend(["-headers", hdr_str])
+                    cmd.extend(["-i", self.url, "-c", "copy", self.save_path])
+                    res = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=180)
+                    if res.returncode == 0 and os.path.exists(self.save_path) and os.path.getsize(self.save_path) > 0:
+                        file_size = os.path.getsize(self.save_path)
+                        self.downloaded_bytes = file_size
+                        self.total_bytes = file_size
+                        self.status = "completed"
+                        self.log(f"Stream capture completed via ffmpeg: {self.save_path}")
+                        if self.on_complete:
+                            self.on_complete(self.download_id, self.save_path)
+                        return
+                except Exception as ex:
+                    self.log(f"ffmpeg stream capture fallback failed: {ex}")
+
             self.status = "error"
             self.log(f"Stream download error: {e}")
             if self.on_error:

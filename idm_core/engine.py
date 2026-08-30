@@ -65,6 +65,7 @@ class DownloadEngine:
         speed_limit: int = 0,
         headers: Optional[Dict[str, str]] = None,
         queue_id: Optional[str] = None,
+        total_bytes: int = 0,
         start_immediately: bool = True
     ) -> str:
         """Probe URL, categorize, register in database, and optionally start download."""
@@ -98,7 +99,7 @@ class DownloadEngine:
             url=url,
             filename=filename,
             save_path=save_path,
-            total_bytes=0,
+            total_bytes=total_bytes,
             category=category,
             connections_count=conn_count,
             headers=headers,
@@ -132,8 +133,10 @@ class DownloadEngine:
             conn_count = record.get("connections_count", self.config.max_connections)
             saved_segments = self.database.get_segments(download_id)
 
-            is_platform_video = YTDLPDownloader.is_ytdlp_available() and YTDLPDownloader.is_video_platform_url(url)
-            is_stream = url.endswith(".m3u8") or ".m3u8?" in url or url.endswith(".mpd")
+            is_stream = url.endswith(".m3u8") or ".m3u8?" in url or url.endswith(".mpd") or ".mpd?" in url
+            is_platform_video = not is_stream and YTDLPDownloader.is_ytdlp_available() and (
+                YTDLPDownloader.is_video_platform_url(url) or bool(headers.get("quality")) or "/watch" in url or "/video" in url or "/shorts" in url
+            )
 
             if is_platform_video:
                 downloader = YTDLPDownloader(
@@ -143,6 +146,7 @@ class DownloadEngine:
                     config=self.config,
                     headers=headers,
                     quality=headers.get("quality"),
+                    total_bytes=record.get("total_bytes", 0),
                     on_progress=self._on_progress_callback,
                     on_complete=self._on_complete_callback,
                     on_error=self._on_error_callback,

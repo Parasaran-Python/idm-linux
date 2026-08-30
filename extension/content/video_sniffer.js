@@ -20,12 +20,14 @@
 
   function fetchFormatsForCurrentPage() {
     const currentUrl = window.location.href;
-    if (cachedFormatsForUrl.has(currentUrl)) return;
+    if (cachedFormatsForUrl.has(currentUrl) && cachedFormatsForUrl.get(currentUrl).__fromBackend) return;
 
     try {
       chrome.runtime.sendMessage({ action: "query_media_formats", url: currentUrl }, (response) => {
         if (response && response.formats && response.formats.length > 0) {
-          cachedFormatsForUrl.set(currentUrl, response.formats);
+          const fmts = response.formats;
+          fmts.__fromBackend = true;
+          cachedFormatsForUrl.set(currentUrl, fmts);
           if (floatingBar) {
             const openMenu = floatingBar.querySelector(".idm-grabber-menu.idm-menu-open");
             if (openMenu) {
@@ -154,15 +156,24 @@
             { label: "Audio Only (MP3)", format: "MP3", quality: "audio", url: currentUrl }
           ];
         } else if (capturedStreams.size > 0) {
-          // Add clean direct media files (MP4, WebM)
+          // Add clean direct media files & streaming playlists (HLS / DASH / MP4 / WebM)
           capturedStreams.forEach((meta, streamUrl) => {
-            if (streamUrl.includes(".m3u8") || streamUrl.includes(".mpd") || streamUrl.includes("videoplayback")) {
-              return; // Skip raw chunk / internal streaming URLs in user menu
+            if (streamUrl.includes("videoplayback") && streamUrl.includes("range=")) {
+              return; // Skip internal fragmented player ranges
             }
-            let label = "Direct Media File";
-            if (streamUrl.includes(".mp4")) label = "Direct MP4 Video (Original Quality)";
-            else if (streamUrl.includes(".webm")) label = "Direct WebM Video";
-            items.push({ label: label, format: "MP4", quality: "best", url: streamUrl });
+            if (streamUrl.includes(".m3u8")) {
+              items.push({ label: "HLS Video Stream (.m3u8)", format: "HLS", quality: "best", url: streamUrl });
+            } else if (streamUrl.includes(".mpd")) {
+              items.push({ label: "DASH Video Stream (.mpd)", format: "DASH", quality: "best", url: streamUrl });
+            } else if (streamUrl.includes(".mp4") || (meta.format && meta.format.includes("mp4"))) {
+              items.push({ label: "Direct MP4 Video (Original)", format: "MP4", quality: "best", url: streamUrl });
+            } else if (streamUrl.includes(".webm") || (meta.format && meta.format.includes("webm"))) {
+              items.push({ label: "Direct WebM Video", format: "WEBM", quality: "best", url: streamUrl });
+            } else if (streamUrl.includes(".mp3") || streamUrl.includes(".m4a") || (meta.format && meta.format.includes("audio"))) {
+              items.push({ label: "Direct Audio Stream", format: "MP3", quality: "audio", url: streamUrl });
+            } else {
+              items.push({ label: "Direct Media Stream", format: "MEDIA", quality: "best", url: streamUrl });
+            }
           });
         }
 
@@ -172,11 +183,24 @@
         }
       }
 
+      function formatBytes(bytes) {
+        if (!bytes || bytes <= 0) return "";
+        const units = ["B", "KB", "MB", "GB", "TB"];
+        let i = 0;
+        let val = bytes;
+        while (val >= 1024 && i < units.length - 1) {
+          val /= 1024;
+          i++;
+        }
+        return `${val.toFixed(2)} ${units[i]}`;
+      }
+
       items.forEach((item) => {
         const row = document.createElement("div");
         row.className = "idm-grabber-menu-item" + (item.disabled ? " idm-menu-item-disabled" : "");
+        const sizeStr = item.filesize && item.filesize > 0 ? ` <span class="idm-menu-item-size">(${formatBytes(item.filesize)})</span>` : "";
         row.innerHTML = `
-          <span class="idm-menu-item-text">${item.label}</span>
+          <span class="idm-menu-item-text">${item.label}${sizeStr}</span>
           <span class="idm-menu-item-badge">${item.format}</span>
         `;
         if (!item.disabled) {
@@ -186,14 +210,17 @@
             menu.classList.remove("idm-menu-open");
 
             const title = getMediaTitle();
-            const filename = `${title}.${item.format.toLowerCase()}`;
+            const fmtLow = (item.format || "mp4").toLowerCase();
+            const ext = fmtLow === "mp3" || fmtLow === "audio" ? "mp3" : (fmtLow === "webm" ? "webm" : (fmtLow === "hls" || fmtLow === "dash" ? "mp4" : "mp4"));
+            const filename = `${title}.${ext}`;
 
             chrome.runtime.sendMessage({
               action: "download_media",
               url: item.url,
               filename: filename,
               quality: item.quality,
-              format: item.format.toLowerCase()
+              filesize: item.filesize || 0,
+              format: fmtLow
             });
           });
         }
@@ -426,11 +453,15 @@
   });
 
   document.addEventListener("__idm_discovered_formats", (e) => {
-    if (e.detail && e.detail.formats && e.detail.formats.length > 0) {
-      cachedFormatsForUrl.set(e.detail.url, e.detail.formats);
-      if (floatingBar) {
-        const populateFunc = floatingBar.__idmPopulateMenu;
-        if (populateFunc) populateFunc();
+    const url = e.detail ? e.detail.url : "";
+    if (url && e.detail.formats && e.detail.formats.length > 0) {
+      const existing = cachedFormatsForUrl.get(url);
+      if (!existing || !existing.__fromBackend) {
+        cachedFormatsForUrl.set(url, e.detail.formats);
+        if (floatingBar) {
+          const populateFunc = floatingBar.__idmPopulateMenu;
+          if (populateFunc) populateFunc();
+        }
       }
     }
   });
@@ -443,11 +474,23 @@
     }
   });
 
-  // 3. Initialize & Continuous Polling
+  // 3. Initialize, Continuous Polling & DOM Mutation Observer
   scanMediaElements();
   document.addEventListener("DOMContentLoaded", scanMediaElements);
   window.addEventListener("load", scanMediaElements);
   setInterval(scanMediaElements, 1000);
+
+  // MutationObserver for instantaneous dynamic player detection
+  try {
+    const observer = new MutationObserver(() => {
+      scanMediaElements();
+    });
+    observer.observe(document.documentElement || document.body, {
+      childList: true,
+      subtree: true
+    });
+  } catch (e) {}
+
   window.addEventListener("scroll", repositionBar, { passive: true });
   window.addEventListener("resize", repositionBar, { passive: true });
   document.addEventListener("fullscreenchange", () => {
@@ -461,6 +504,12 @@
     userDismissed = false;
     customPosition = null;
     capturedStreams.clear();
+    fetchFormatsForCurrentPage();
+    scanMediaElements();
+  });
+
+  window.addEventListener("popstate", () => {
+    fetchFormatsForCurrentPage();
     scanMediaElements();
   });
 

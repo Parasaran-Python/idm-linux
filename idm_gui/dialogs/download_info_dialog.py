@@ -26,7 +26,7 @@ from idm_gui.widgets.download_table import format_bytes
 
 
 class ProbeWorker(QObject):
-    probed = pyqtSignal(int, str)  # size, filename
+    probed = pyqtSignal(object, str)  # 64-bit size, filename
 
     def __init__(self, url: str, headers: Optional[Dict[str, str]] = None):
         super().__init__()
@@ -40,6 +40,30 @@ class ProbeWorker(QObject):
         try:
             if not self.url or not self.url.startswith(("http://", "https://", "ftp://")):
                 return
+
+            # 1. Video Platform URLs (YouTube, Vimeo, Twitch, etc.)
+            from idm_core.ytdlp_downloader import YTDLPDownloader
+            if YTDLPDownloader.is_ytdlp_available() and (
+                YTDLPDownloader.is_video_platform_url(self.url) or bool(self.headers.get("quality"))
+            ):
+                quality = self.headers.get("quality")
+                info = YTDLPDownloader.probe_media_info(self.url, quality=quality)
+                size = info.get("filesize", 0)
+                filename = info.get("filename", "")
+                if size > 0 or filename:
+                    self.probed.emit(size, filename)
+                return
+
+            # 2. HLS Video Stream URLs (.m3u8)
+            if ".m3u8" in self.url.lower():
+                from idm_core.stream_downloader import HLSParser
+                info = HLSParser.probe_stream_info(self.url, headers=self.headers)
+                size = info.get("filesize", 0)
+                if size > 0:
+                    self.probed.emit(size, "")
+                return
+
+            # 3. Standard HTTP/HTTPS/FTP URLs (HEAD / Range Probe)
             headers = {
                 "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
                 "Accept": "*/*",

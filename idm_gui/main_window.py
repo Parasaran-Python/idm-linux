@@ -281,6 +281,7 @@ class MainWindow(QMainWindow):
                     save_path=res["save_path"],
                     category=res["category"],
                     headers=headers,
+                    total_bytes=dlg.file_size,
                     start_immediately=start_imm
                 )
                 self.refresh_downloads()
@@ -533,10 +534,11 @@ class MainWindow(QMainWindow):
         self.refresh_downloads()
 
     def _show_about(self):
+        import idm_core
         QMessageBox.about(
             self,
             "About IDM Linux",
-            "<h3>IDM Linux v1.0.3</h3>"
+            f"<h3>IDM Linux v{idm_core.__version__}</h3>"
             "<p>Internet Download Manager clone for Linux desktop environments.</p>"
             "<p>Features dynamic multi-segment connection allocation, browser download interception, "
             "floating video sniffer, queue scheduler, and native IPC.</p>"

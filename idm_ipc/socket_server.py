@@ -140,6 +140,7 @@ class IPCServer:
                     speed_limit=msg.get("speed_limit", 0),
                     headers=msg.get("headers"),
                     queue_id=msg.get("queue_id"),
+                    total_bytes=msg.get("total_bytes", 0),
                     start_immediately=msg.get("start_immediately", True)
                 )
                 return {"status": "ok", "download_id": dl_id}

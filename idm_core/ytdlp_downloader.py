@@ -3,6 +3,7 @@ Video Platform Stream Downloader using yt-dlp with Real-Time Telemetry & Progres
 Handles downloading from YouTube, Vimeo, Dailymotion, Reddit, Twitter/X, Twitch, etc.
 """
 
+import json
 import os
 import re
 import shutil
@@ -23,6 +24,7 @@ class YTDLPDownloader:
         speed_limit: int = 0,
         headers: Optional[Dict[str, str]] = None,
         quality: Optional[str] = None,
+        total_bytes: int = 0,
         on_progress: Optional[Callable[[str, Dict[str, Any]], None]] = None,
         on_segment_update: Optional[Callable[[str, List[dict]], None]] = None,
         on_complete: Optional[Callable[[str, str], None]] = None,
@@ -43,10 +45,15 @@ class YTDLPDownloader:
         self.on_log = on_log
 
         self.status = "idle"
-        self.total_bytes = 0
+        self.total_bytes = total_bytes
         self.downloaded_bytes = 0
         self.speed = 0.0
         self.eta = 0.0
+
+        self._completed_streams_bytes = 0
+        self._current_stream_total = 0
+        self._current_stream_downloaded = 0
+        self._last_stream_pct = 0.0
 
         self._process: Optional[subprocess.Popen] = None
         self._stop_event = threading.Event()
@@ -74,6 +81,23 @@ class YTDLPDownloader:
         return any(d in lower for d in domains)
 
     @classmethod
+    def _get_js_runtime_args(cls) -> List[str]:
+        """Find and configure available JS runtime for yt-dlp challenge solving."""
+        for rt_name in ["node", "deno", "bun", "quickjs"]:
+            p = shutil.which(rt_name)
+            if p:
+                return ["--js-runtimes", f"{rt_name}:{p}"]
+        return []
+
+    @classmethod
+    def _get_extractor_args(cls, url: str) -> List[str]:
+        """Configure optimal extractor arguments to prevent 403 Forbidden and SABR format issues."""
+        lower = (url or "").lower()
+        if "youtube.com" in lower or "youtu.be" in lower:
+            return ["--extractor-args", "youtube:player_client=android,mweb,web_embedded,web"]
+        return []
+
+    @classmethod
     def extract_media_formats(cls, url: str) -> List[Dict[str, Any]]:
         """Dynamically extract authentic available formats for any video URL."""
         if not cls.is_ytdlp_available() or not url:
@@ -88,78 +112,230 @@ class YTDLPDownloader:
             "--geo-bypass",
             "--remote-components", "ejs:github"
         ]
-
-        if shutil.which("node"):
-            cmd.extend(["--js-runtimes", f"node:{shutil.which('node')}"])
-
+        cmd.extend(cls._get_js_runtime_args())
+        cmd.extend(cls._get_extractor_args(url))
         cmd.append(url)
 
         try:
-            res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, timeout=12)
+            res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, timeout=15)
             if res.returncode != 0 or not res.stdout:
                 return []
 
             data = json.loads(res.stdout)
-            formats = data.get("formats", [])
-            tier_map = {}
-            has_audio = False
-
-            for f in formats:
-                h = f.get("height")
-                vcodec = f.get("vcodec", "none")
-                acodec = f.get("acodec", "none")
-                if acodec != "none":
-                    has_audio = True
-
-                if h and vcodec != "none" and h > 0:
-                    fps = f.get("fps") or 30
-                    filesize = f.get("filesize") or f.get("filesize_approx") or 0
-                    tbr = f.get("tbr") or f.get("vbr") or 0
-
-                    if h not in tier_map or (fps > tier_map[h]["fps"]) or (fps == tier_map[h]["fps"] and tbr > tier_map[h]["tbr"]):
-                        label = f"{h}p"
-                        if fps and fps > 30:
-                            label += f" {int(fps)}fps"
-                        if h >= 4320:
-                            label += " (8K Ultra HD)"
-                        elif h >= 2160:
-                            label += " (4K Ultra HD)"
-                        elif h >= 1440:
-                            label += " (2K Quad HD)"
-                        elif h >= 1080:
-                            label += " (Full HD)"
-                        elif h >= 720:
-                            label += " (HD)"
-                        else:
-                            label += " (SD)"
-
-                        tier_map[h] = {
-                            "label": label,
-                            "height": h,
-                            "fps": fps,
-                            "tbr": tbr,
-                            "quality": str(h),
-                            "format": "MP4",
-                            "filesize": filesize,
-                            "url": url
-                        }
-
-            video_formats = list(tier_map.values())
-            video_formats.sort(key=lambda x: x["height"], reverse=True)
-
-            if has_audio:
-                video_formats.append({
-                    "label": "Audio Only (MP3)",
-                    "height": 0,
-                    "quality": "audio",
-                    "format": "MP3",
-                    "filesize": 0,
-                    "url": url
-                })
-
-            return video_formats
+            return cls._parse_formats_and_tiers(data, url)
         except Exception:
             return []
+
+    @classmethod
+    def _get_vcodec_priority(cls, vcodec: Optional[str]) -> int:
+        """Score video codec priority matching yt-dlp's default bestvideo preference."""
+        v = (vcodec or "").lower()
+        if "av01" in v or "av1" in v:
+            return 40
+        if "vp09.02" in v or "vp9.2" in v:
+            return 35
+        if "vp09" in v or "vp9" in v:
+            return 30
+        if "avc1" in v or "h264" in v:
+            return 20
+        if v != "none" and v != "":
+            return 10
+        return 0
+
+    @classmethod
+    def _get_acodec_priority(cls, acodec: Optional[str]) -> int:
+        """Score audio codec priority matching yt-dlp's default bestaudio preference."""
+        a = (acodec or "").lower()
+        if "opus" in a:
+            return 30
+        if "mp4a" in a or "aac" in a:
+            return 20
+        if a != "none" and a != "":
+            return 10
+        return 0
+
+    @classmethod
+    def _parse_formats_and_tiers(cls, data: Dict[str, Any], url: str) -> List[Dict[str, Any]]:
+        """Unified parser ensuring 100% identical format definitions and file sizes across dropdown and dialogs."""
+        formats = data.get("formats", [])
+        duration = data.get("duration") or 0
+        tier_map = {}
+        has_audio = False
+
+        def get_format_size(f):
+            sz = f.get("filesize") or f.get("filesize_approx") or 0
+            tbr = f.get("tbr") or f.get("vbr") or f.get("abr") or 0
+            if not sz and tbr and duration:
+                sz = int((tbr * 1000 / 8) * duration)
+            return sz
+
+        # 1. Best audio stream matching yt-dlp (acodec preference + abr/filesize)
+        best_audio_format = None
+        for f in formats:
+            if f.get("vcodec") == "none" and f.get("acodec") != "none":
+                has_audio = True
+                acodec_score = cls._get_acodec_priority(f.get("acodec"))
+                abr = f.get("abr") or f.get("tbr") or 0
+                sz = get_format_size(f)
+
+                is_better_audio = False
+                if best_audio_format is None:
+                    is_better_audio = True
+                else:
+                    curr_score = cls._get_acodec_priority(best_audio_format.get("acodec"))
+                    curr_abr = best_audio_format.get("abr") or best_audio_format.get("tbr") or 0
+                    curr_sz = get_format_size(best_audio_format)
+                    if acodec_score > curr_score:
+                        is_better_audio = True
+                    elif acodec_score == curr_score:
+                        if abr > curr_abr or (abr == curr_abr and sz > curr_sz):
+                            is_better_audio = True
+
+                if is_better_audio:
+                    best_audio_format = f
+
+        best_audio_sz = get_format_size(best_audio_format) if best_audio_format else 0
+
+        # 2. Select standard video format matching yt-dlp format selection
+        for f in formats:
+            h = f.get("height")
+            vcodec = f.get("vcodec", "none")
+            acodec = f.get("acodec", "none")
+            if acodec != "none":
+                has_audio = True
+
+            if h and vcodec != "none" and h > 0:
+                fps = f.get("fps") or 30
+                raw_sz = get_format_size(f)
+                tbr = f.get("tbr") or f.get("vbr") or 0
+                total_sz = raw_sz + (best_audio_sz if acodec == "none" else 0)
+                vcodec_score = cls._get_vcodec_priority(vcodec)
+
+                # Format preference matching yt-dlp:
+                # Higher fps > Higher codec efficiency (av01 > vp9 > avc1) > Bitrate/Size
+                is_better = False
+                if h not in tier_map:
+                    is_better = True
+                else:
+                    curr = tier_map[h]
+                    curr_score = curr.get("vcodec_score", 0)
+                    if fps > curr["fps"]:
+                        is_better = True
+                    elif fps == curr["fps"]:
+                        if vcodec_score > curr_score:
+                            is_better = True
+                        elif vcodec_score == curr_score and (raw_sz > curr["raw_sz"] or tbr > curr["tbr"]):
+                            is_better = True
+
+                if is_better:
+                    label = f"{h}p"
+                    if fps and fps > 30:
+                        label += f" {int(fps)}fps"
+                    if h >= 4320:
+                        label += " (8K Ultra HD)"
+                    elif h >= 2160:
+                        label += " (4K Ultra HD)"
+                    elif h >= 1440:
+                        label += " (2K Quad HD)"
+                    elif h >= 1080:
+                        label += " (Full HD)"
+                    elif h >= 720:
+                        label += " (HD)"
+                    else:
+                        label += " (SD)"
+
+                    tier_map[h] = {
+                        "label": label,
+                        "height": h,
+                        "fps": fps,
+                        "tbr": tbr,
+                        "vcodec_score": vcodec_score,
+                        "quality": str(h),
+                        "format": "MP4",
+                        "raw_sz": raw_sz,
+                        "filesize": total_sz,
+                        "url": url
+                    }
+
+        video_formats = list(tier_map.values())
+        video_formats.sort(key=lambda x: x["height"], reverse=True)
+
+        if has_audio:
+            video_formats.append({
+                "label": "Audio Only (MP3)",
+                "height": 0,
+                "fps": 0,
+                "tbr": 0,
+                "quality": "audio",
+                "format": "MP3",
+                "raw_sz": best_audio_sz,
+                "filesize": best_audio_sz,
+                "url": url
+            })
+
+        return video_formats
+
+    @classmethod
+    def probe_media_info(cls, url: str, quality: Optional[str] = None) -> Dict[str, Any]:
+        """Fast metadata probe to retrieve authentic video title, filename, and exact or estimated filesize."""
+        if not cls.is_ytdlp_available() or not url:
+            return {"title": "", "filename": "", "filesize": 0}
+
+        bin_name = "yt-dlp" if shutil.which("yt-dlp") else "youtube-dl"
+        cmd = [
+            bin_name,
+            "-J",
+            "--no-playlist",
+            "--no-check-certificates",
+            "--geo-bypass",
+            "--remote-components", "ejs:github"
+        ]
+        cmd.extend(cls._get_js_runtime_args())
+        cmd.extend(cls._get_extractor_args(url))
+        cmd.append(url)
+
+        try:
+            res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, timeout=15)
+            if res.returncode != 0 or not res.stdout:
+                return {"title": "", "filename": "", "filesize": 0}
+
+            data = json.loads(res.stdout)
+            raw_title = data.get("title") or ""
+            clean_title = re.sub(r'[\\/:*?"<>|]', '_', raw_title).strip()
+            ext = data.get("ext") or "mp4"
+            duration = data.get("duration") or 0
+
+            tier_formats = cls._parse_formats_and_tiers(data, url)
+            chosen_size = 0
+            if quality:
+                q_str = str(quality).lower().strip()
+                q_digits = "".join(filter(str.isdigit, q_str))
+                is_audio_q = "audio" in q_str or "mp3" in q_str
+                for tf in tier_formats:
+                    if is_audio_q and tf["quality"] == "audio":
+                        chosen_size = tf["filesize"]
+                        ext = "mp3"
+                        break
+                    elif tf["quality"] == q_str:
+                        chosen_size = tf["filesize"]
+                        break
+                    elif q_digits and (tf["quality"] == q_digits or str(tf.get("height", "")) == q_digits):
+                        chosen_size = tf["filesize"]
+                        break
+
+            if chosen_size <= 0 and tier_formats:
+                chosen_size = tier_formats[0]["filesize"]
+
+            filename = f"{clean_title}.{ext}" if clean_title else ""
+            return {
+                "title": clean_title,
+                "filename": filename,
+                "filesize": chosen_size,
+                "duration": duration,
+                "formats": tier_formats
+            }
+        except Exception:
+            return {"title": "", "filename": "", "filesize": 0}
 
     def log(self, msg: str):
         if self.on_log:
@@ -202,6 +378,11 @@ class YTDLPDownloader:
                     pass
 
     def _run_ytdlp(self):
+        self._completed_streams_bytes = 0
+        self._current_stream_total = 0
+        self._current_stream_downloaded = 0
+        self._last_stream_pct = 0.0
+
         bin_name = "yt-dlp" if shutil.which("yt-dlp") else "youtube-dl"
         dest_dir = os.path.dirname(self.save_path)
         os.makedirs(dest_dir, exist_ok=True)
@@ -212,14 +393,16 @@ class YTDLPDownloader:
             "--progress",
             "-N", "8",
             "--no-playlist",
-            "--extractor-args", "youtube:player_client=android,web,tv",
             "--no-check-certificates",
             "--geo-bypass",
             "--remote-components", "ejs:github",
             "-o", self.save_path,
         ]
 
-        # Quality and format selection with resilient automatic fallback
+        cmd.extend(self._get_js_runtime_args())
+        cmd.extend(self._get_extractor_args(self.url))
+
+        # Quality and format selection with resilient video+audio pairing
         q_str = str(self.quality or self.headers.get("quality", "")).lower().strip()
         is_audio = "audio" in q_str or "mp3" in q_str or self.save_path.lower().endswith((".mp3", ".m4a", ".aac"))
 
@@ -228,15 +411,17 @@ class YTDLPDownloader:
         elif q_str:
             height = "".join(filter(str.isdigit, q_str))
             if height:
-                cmd.extend(["-f", f"bestvideo[height<={height}]+bestaudio/best[height<={height}]/bestvideo+bestaudio/best/18/best"])
+                cmd.extend(["-f", f"bestvideo[height<={height}]+bestaudio/best[height<={height}]/bestvideo+bestaudio/best"])
             else:
-                cmd.extend(["-f", "bestvideo+bestaudio/best/18/best"])
+                cmd.extend(["-f", "bestvideo+bestaudio/best"])
         else:
-            cmd.extend(["-f", "bestvideo+bestaudio/best/18/best"])
+            cmd.extend(["-f", "bestvideo+bestaudio/best"])
 
-        # Add node js runtime if present
-        if shutil.which("node"):
-            cmd.extend(["--js-runtimes", f"node:{shutil.which('node')}"])
+        # Automatic container merging via ffmpeg if available
+        if shutil.which("ffmpeg"):
+            cmd.extend(["--ffmpeg-location", shutil.which("ffmpeg")])
+            if not is_audio and not self.save_path.lower().endswith((".mkv", ".webm")):
+                cmd.extend(["--merge-output-format", "mp4"])
 
         # Add User-Agent and Referer if present
         if self.headers:
@@ -333,17 +518,37 @@ class YTDLPDownloader:
         if not line:
             return
 
+        # Check for destination / new stream header transition
+        if "[download] Destination:" in line:
+            if self._current_stream_total > 0:
+                self._completed_streams_bytes += self._current_stream_total
+                self._current_stream_total = 0
+                self._current_stream_downloaded = 0
+                self._last_stream_pct = 0.0
+
         # [download]  45.2% of  120.50MiB at  4.52MiB/s ETA 00:14
         pct_match = re.search(r"(\d+(?:\.\d+)?)%", line)
         if pct_match:
             pct = float(pct_match.group(1))
+
+            # Detect stream transition if percentage resets (e.g. from 100% to 0% for audio)
+            if pct < (self._last_stream_pct - 20.0) and self._current_stream_total > 0:
+                self._completed_streams_bytes += self._current_stream_total
+                self._current_stream_total = 0
+                self._current_stream_downloaded = 0
+
+            self._last_stream_pct = pct
+
             size_match = re.search(r"of\s+(?:~\s*)?(\d+(?:\.\d+)?)\s*([KMGT]?i?B)", line, re.I)
             if size_match:
                 val = float(size_match.group(1))
                 unit = size_match.group(2).upper()
                 mult = {"B": 1, "KB": 1024, "KIB": 1024, "MB": 1024**2, "MIB": 1024**2, "GB": 1024**3, "GIB": 1024**3}.get(unit, 1024**2)
-                self.total_bytes = int(val * mult)
-                self.downloaded_bytes = int((pct / 100.0) * self.total_bytes)
+                self._current_stream_total = int(val * mult)
+                self._current_stream_downloaded = int((pct / 100.0) * self._current_stream_total)
+
+                self.downloaded_bytes = self._completed_streams_bytes + self._current_stream_downloaded
+                self.total_bytes = max(self.total_bytes, self._completed_streams_bytes + self._current_stream_total)
 
             speed_match = re.search(r"at\s+(\d+(?:\.\d+)?)\s*([KMGT]?i?B)/s", line, re.I)
             if speed_match:
