@@ -273,6 +273,7 @@ class MainWindow(QMainWindow):
                     headers=headers,
                     start_immediately=start_imm
                 )
+                self.refresh_downloads()
                 if start_imm and dl_id:
                     self._show_progress_dialog(dl_id)
                 self.refresh_downloads()

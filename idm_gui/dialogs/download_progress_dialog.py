@@ -42,6 +42,7 @@ class DownloadProgressDialog(QDialog):
         self.downloaded_bytes = 0
 
         self.setWindowTitle(f"{self.filename} - IDM Download Progress")
+        self.setWindowFlags(Qt.WindowType.Window | Qt.WindowType.WindowStaysOnTopHint)
         self.setAttribute(Qt.WidgetAttribute.WA_QuitOnClose, False)
         self.setMinimumWidth(580)
         self.setMinimumHeight(440)
