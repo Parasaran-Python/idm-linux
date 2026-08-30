@@ -428,7 +428,7 @@ class MainWindow(QMainWindow):
 
             if download_id not in self.progress_dialogs or not self.progress_dialogs[download_id].isVisible():
                 dlg = DownloadProgressDialog(download_id, dl.get("filename", "Download"), save_path=dl.get("save_path", ""), parent=None)
-                dlg.setWindowFlags(Qt.WindowType.Window)
+                dlg.setWindowFlags(Qt.WindowType.Window | Qt.WindowType.WindowStaysOnTopHint)
                 dlg.setAttribute(Qt.WidgetAttribute.WA_QuitOnClose, False)
                 dlg.pause_requested.connect(self.engine.pause_download)
                 dlg.resume_requested.connect(self.engine.resume_download)
@@ -437,10 +437,12 @@ class MainWindow(QMainWindow):
 
                 self.progress_dialogs[download_id] = dlg
                 dlg.update_progress(dl)
+                dlg.showNormal()
                 dlg.show()
                 dlg.raise_()
                 dlg.activateWindow()
             else:
+                self.progress_dialogs[download_id].showNormal()
                 self.progress_dialogs[download_id].show()
                 self.progress_dialogs[download_id].raise_()
                 self.progress_dialogs[download_id].activateWindow()
