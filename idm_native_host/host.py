@@ -122,7 +122,7 @@ def handle_browser_message(msg: Dict[str, Any], ipc_client: Optional[IPCClient] 
             "status": "ok",
             "pong": True,
             "app": "IDM Linux",
-            "version": "1.0.2",
+            "version": "1.0.3",
             "engine_running": is_running
         }
 
