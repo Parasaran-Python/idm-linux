@@ -183,12 +183,20 @@ class DownloadProgressDialog(QDialog):
         self.eta_label.setText(format_time(eta))
         self.resume_label.setText("Yes" if resumable else "No")
 
+        pct = int(stats.get("progress_pct", 0)) if "progress_pct" in stats else 0
         if tot_bytes > 0:
             pct = int((dl_bytes / tot_bytes) * 100)
             self.progress_bar.setValue(pct)
             self.progress_bar.setFormat(f"{pct}% ({format_bytes(dl_bytes)} of {format_bytes(tot_bytes)})")
+        elif pct > 0:
+            self.progress_bar.setValue(pct)
+            self.progress_bar.setFormat(f"{pct}% ({format_bytes(dl_bytes)})")
         else:
             self.progress_bar.setValue(100 if self.status == "completed" else 0)
+            if self.status == "completed":
+                self.progress_bar.setFormat(f"100% ({format_bytes(dl_bytes)})")
+            elif dl_bytes > 0:
+                self.progress_bar.setFormat(f"{format_bytes(dl_bytes)} (Unknown size)")
 
         self.speed_graph.add_speed_sample(speed)
 
