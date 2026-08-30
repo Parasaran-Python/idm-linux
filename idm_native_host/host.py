@@ -49,6 +49,15 @@ def ensure_idm_running(client: IPCClient) -> bool:
     py_path = env.get("PYTHONPATH", "")
     env["PYTHONPATH"] = f"/usr/lib/python3/dist-packages:{repo_root}:{py_path}".strip(":")
 
+    uid = os.getuid()
+    env.setdefault("DISPLAY", ":0")
+    env.setdefault("XDG_RUNTIME_DIR", f"/run/user/{uid}")
+    if os.path.exists(f"/run/user/{uid}/wayland-0"):
+        env.setdefault("WAYLAND_DISPLAY", "wayland-0")
+    xauth = os.path.expanduser("~/.Xauthority")
+    if os.path.exists(xauth):
+        env.setdefault("XAUTHORITY", xauth)
+
     # 1. Try launching GUI app via python module
     try:
         cmd = [sys.executable, "-m", "idm_gui.app", "--minimized"]
