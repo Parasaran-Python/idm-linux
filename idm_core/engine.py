@@ -15,6 +15,7 @@ from idm_core.scheduler import Scheduler
 from idm_core.segment_downloader import SegmentDownloader
 from idm_core.storage import StorageManager
 from idm_core.stream_downloader import StreamDownloader
+from idm_core.ytdlp_downloader import YTDLPDownloader
 
 
 class DownloadEngine:
@@ -131,9 +132,21 @@ class DownloadEngine:
             conn_count = record.get("connections_count", self.config.max_connections)
             saved_segments = self.database.get_segments(download_id)
 
+            is_platform_video = YTDLPDownloader.is_ytdlp_available() and YTDLPDownloader.is_video_platform_url(url)
             is_stream = url.endswith(".m3u8") or ".m3u8?" in url or url.endswith(".mpd")
 
-            if is_stream:
+            if is_platform_video:
+                downloader = YTDLPDownloader(
+                    download_id=download_id,
+                    url=url,
+                    save_path=save_path,
+                    config=self.config,
+                    headers=headers,
+                    on_progress=self._on_progress_callback,
+                    on_complete=self._on_complete_callback,
+                    on_error=self._on_error_callback,
+                )
+            elif is_stream:
                 downloader = StreamDownloader(
                     download_id=download_id,
                     url=url,
