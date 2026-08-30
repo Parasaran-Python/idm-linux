@@ -135,15 +135,25 @@
       const currentUrl = window.location.href;
       let items = [];
 
-      // 1. If backend dynamic formats exist for this video, use exact real formats
+      // 1. If backend / in-page dynamic formats exist for this video, use exact real formats
       if (cachedFormatsForUrl.has(currentUrl) && cachedFormatsForUrl.get(currentUrl).length > 0) {
         items = [...cachedFormatsForUrl.get(currentUrl)];
       } else {
         // Trigger background format resolution
         fetchFormatsForCurrentPage();
 
-        // 2. Add in-page sniffed media streams (HLS, DASH, direct MP4)
-        if (capturedStreams.size > 0) {
+        const isYouTube = window.location.hostname.includes("youtube.com");
+        if (isYouTube) {
+          // Provide instant standard quality options while query_media_formats runs in background
+          items = [
+            { label: "1080p 60fps (Full HD)", format: "MP4", quality: "1080", url: currentUrl },
+            { label: "720p HD", format: "MP4", quality: "720", url: currentUrl },
+            { label: "480p SD", format: "MP4", quality: "480", url: currentUrl },
+            { label: "360p Medium", format: "MP4", quality: "360", url: currentUrl },
+            { label: "Audio Only (128k MP3)", format: "MP3", quality: "audio", url: currentUrl }
+          ];
+        } else if (capturedStreams.size > 0) {
+          // 2. Add in-page sniffed media streams (HLS, DASH, direct MP4)
           capturedStreams.forEach((meta, streamUrl) => {
             let label = meta.format || "Media Stream";
             if (streamUrl.includes(".m3u8")) label = "HLS Master Stream (.m3u8)";
@@ -405,6 +415,16 @@
     if (e.detail && e.detail.url) {
       capturedStreams.set(e.detail.url, { format: e.detail.type || "Stream" });
       repositionBar();
+    }
+  });
+
+  document.addEventListener("__idm_discovered_formats", (e) => {
+    if (e.detail && e.detail.formats && e.detail.formats.length > 0) {
+      cachedFormatsForUrl.set(e.detail.url, e.detail.formats);
+      if (floatingBar) {
+        const populateFunc = floatingBar.__idmPopulateMenu;
+        if (populateFunc) populateFunc();
+      }
     }
   });
 
