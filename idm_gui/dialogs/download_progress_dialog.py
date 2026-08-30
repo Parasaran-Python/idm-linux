@@ -1,10 +1,11 @@
 """
-Iconic IDM Active Download Progress Dialog with Segment Visualizer & Speed Graph
+Iconic IDM Active Download Progress Dialog with Segment Visualizer, Speed Graph & File/Folder Launchers
 """
 
 import os
 from typing import Any, Dict, List, Optional
-from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtCore import Qt, QUrl, pyqtSignal
+from PyQt6.QtGui import QDesktopServices
 from PyQt6.QtWidgets import (
     QCheckBox,
     QDialog,
@@ -31,17 +32,18 @@ class DownloadProgressDialog(QDialog):
     cancel_requested = pyqtSignal(str)
     speed_limit_changed = pyqtSignal(str, int)
 
-    def __init__(self, download_id: str, filename: str = "", parent=None):
+    def __init__(self, download_id: str, filename: str = "", save_path: str = "", parent=None):
         super().__init__(parent)
         self.download_id = download_id
         self.filename = filename or "Download"
+        self.save_path = save_path or ""
         self.status = "downloading"
         self.total_bytes = 0
         self.downloaded_bytes = 0
 
         self.setWindowTitle(f"{self.filename} - IDM Download Progress")
-        self.setMinimumWidth(560)
-        self.setMinimumHeight(420)
+        self.setMinimumWidth(580)
+        self.setMinimumHeight(440)
 
         self._setup_ui()
 
@@ -76,7 +78,7 @@ class DownloadProgressDialog(QDialog):
         self.progress_bar = QProgressBar()
         self.progress_bar.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.progress_bar.setValue(0)
-        self.progress_bar.setFixedHeight(20)
+        self.progress_bar.setFixedHeight(22)
         main_layout.addWidget(self.progress_bar)
 
         # 3. Dynamic Segment Visualizer
@@ -123,6 +125,7 @@ class DownloadProgressDialog(QDialog):
         btn_layout = QHBoxLayout()
         btn_layout.addStretch()
 
+        # In-Progress Buttons
         self.btn_pause = QPushButton("Pause")
         self.btn_pause.clicked.connect(self._on_pause_toggle)
 
@@ -132,6 +135,24 @@ class DownloadProgressDialog(QDialog):
         self.btn_hide = QPushButton("Hide")
         self.btn_hide.clicked.connect(self.hide)
 
+        # Completion Action Buttons
+        self.btn_open = QPushButton("Open")
+        self.btn_open.setStyleSheet("background-color: #2b6cb0; color: white; font-weight: bold; padding: 6px 14px;")
+        self.btn_open.clicked.connect(self._on_open_file)
+        self.btn_open.hide()
+
+        self.btn_open_folder = QPushButton("📂 Open Folder")
+        self.btn_open_folder.setStyleSheet("font-weight: bold; padding: 6px 14px;")
+        self.btn_open_folder.clicked.connect(self._on_open_folder)
+        self.btn_open_folder.hide()
+
+        self.btn_close = QPushButton("Close")
+        self.btn_close.clicked.connect(self.accept)
+        self.btn_close.hide()
+
+        btn_layout.addWidget(self.btn_open)
+        btn_layout.addWidget(self.btn_open_folder)
+        btn_layout.addWidget(self.btn_close)
         btn_layout.addWidget(self.btn_pause)
         btn_layout.addWidget(self.btn_cancel)
         btn_layout.addWidget(self.btn_hide)
@@ -142,6 +163,9 @@ class DownloadProgressDialog(QDialog):
         """Update live telemetry statistics."""
         self.status = stats.get("status", "downloading")
         self.status_label.setText(self.status.capitalize())
+
+        if stats.get("save_path"):
+            self.save_path = stats.get("save_path")
 
         dl_bytes = stats.get("downloaded_bytes", 0)
         tot_bytes = stats.get("total_bytes", 0)
@@ -167,9 +191,20 @@ class DownloadProgressDialog(QDialog):
         self.speed_graph.add_speed_sample(speed)
 
         if self.status == "completed":
-            self.btn_pause.setEnabled(False)
             self.status_label.setStyleSheet("font-weight: bold; color: #4299e1;")
-            self.status_label.setText("Completed")
+            self.status_label.setText("Download Complete")
+
+            # Switch to completion buttons
+            self.btn_pause.hide()
+            self.btn_cancel.hide()
+            self.btn_hide.hide()
+            self.btn_open.show()
+            self.btn_open_folder.show()
+            self.btn_close.show()
+
+            self.limit_check.setEnabled(False)
+            self.limit_slider.setEnabled(False)
+
         elif self.status == "paused":
             self.btn_pause.setText("Resume")
             self.status_label.setStyleSheet("font-weight: bold; color: #dd6b20;")
@@ -192,6 +227,17 @@ class DownloadProgressDialog(QDialog):
     def _on_cancel(self):
         self.cancel_requested.emit(self.download_id)
         self.reject()
+
+    def _on_open_file(self):
+        if self.save_path and os.path.exists(self.save_path):
+            QDesktopServices.openUrl(QUrl.fromLocalFile(self.save_path))
+        self.accept()
+
+    def _on_open_folder(self):
+        if self.save_path:
+            dir_path = os.path.dirname(self.save_path)
+            if os.path.exists(dir_path):
+                QDesktopServices.openUrl(QUrl.fromLocalFile(dir_path))
 
     def _on_limit_toggled(self, checked: bool):
         self.limit_slider.setEnabled(checked)

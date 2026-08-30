@@ -1,6 +1,6 @@
 /**
  * IDM Linux - Classic Floating Video Grabber & Sniffer
- * Renders the iconic Windows IDM "Download this video" button above players.
+ * Renders the iconic Windows IDM "Download this video" button above players with dismiss option.
  */
 
 (function () {
@@ -13,6 +13,7 @@
   const capturedStreams = new Map(); // url -> { title, format, type }
   let floatingBar = null;
   let activePlayerEl = null;
+  let userDismissed = false;
 
   /**
    * Inject Main-World Page Hook Script
@@ -44,7 +45,7 @@
   }
 
   /**
-   * Create the iconic IDM Floating Download Banner
+   * Create the iconic IDM Floating Download Banner with Dismiss Option
    */
   function createFloatingDownloadBar() {
     if (floatingBar && document.contains(floatingBar)) {
@@ -54,6 +55,9 @@
     const container = document.createElement("div");
     container.id = "idm-floating-grabber-root";
     container.className = "idm-floating-grabber-root";
+
+    const wrapper = document.createElement("div");
+    wrapper.className = "idm-grabber-pill-wrapper";
 
     const button = document.createElement("div");
     button.className = "idm-grabber-button";
@@ -66,6 +70,20 @@
       <span class="idm-grabber-label">Download this video</span>
       <span class="idm-grabber-arrow">▼</span>
     `;
+
+    const closeBtn = document.createElement("button");
+    closeBtn.className = "idm-grabber-close-btn";
+    closeBtn.title = "Dismiss IDM download panel";
+    closeBtn.innerHTML = "&times;";
+    closeBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      e.preventDefault();
+      userDismissed = true;
+      container.style.display = "none";
+    });
+
+    wrapper.appendChild(button);
+    wrapper.appendChild(closeBtn);
 
     const menu = document.createElement("div");
     menu.className = "idm-grabber-menu";
@@ -142,7 +160,7 @@
       }
     });
 
-    container.appendChild(button);
+    container.appendChild(wrapper);
     container.appendChild(menu);
 
     (document.fullscreenElement || document.body || document.documentElement).appendChild(container);
@@ -154,6 +172,11 @@
    * Position the floating bar over the active video element
    */
   function repositionBar() {
+    if (userDismissed) {
+      if (floatingBar) floatingBar.style.display = "none";
+      return;
+    }
+
     const video = activePlayerEl || document.querySelector("video, audio, #movie_player, .html5-video-player");
     const isVideoSite =
       window.location.hostname.includes("youtube.com") ||
@@ -240,6 +263,7 @@
   });
 
   window.addEventListener("yt-navigate-finish", () => {
+    userDismissed = false;
     capturedStreams.clear();
     scanMediaElements();
   });

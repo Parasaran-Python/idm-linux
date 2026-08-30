@@ -365,7 +365,7 @@ class MainWindow(QMainWindow):
             return
 
         if download_id not in self.progress_dialogs or not self.progress_dialogs[download_id].isVisible():
-            dlg = DownloadProgressDialog(download_id, dl.get("filename", "Download"), parent=self)
+            dlg = DownloadProgressDialog(download_id, dl.get("filename", "Download"), save_path=dl.get("save_path", ""), parent=self)
             dlg.pause_requested.connect(self.engine.pause_download)
             dlg.resume_requested.connect(self.engine.resume_download)
             dlg.cancel_requested.connect(lambda did: self.engine.delete_download(did, delete_files=True))

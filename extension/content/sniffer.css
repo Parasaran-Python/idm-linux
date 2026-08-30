@@ -11,29 +11,34 @@
   display: block !important;
 }
 
+.idm-grabber-pill-wrapper {
+  display: inline-flex !important;
+  align-items: center !important;
+  background: linear-gradient(180deg, #1b4f72 0%, #0b253a 100%) !important;
+  border: 1px solid #5dade2 !important;
+  border-radius: 5px !important;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.85), 0 0 8px rgba(93, 173, 226, 0.4) !important;
+  overflow: hidden !important;
+  transition: all 0.16s ease !important;
+}
+
+.idm-grabber-pill-wrapper:hover {
+  border-color: #85c1e9 !important;
+  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.95), 0 0 12px rgba(93, 173, 226, 0.6) !important;
+}
+
 .idm-grabber-button {
   display: inline-flex !important;
   align-items: center !important;
   gap: 7px !important;
-  background: linear-gradient(180deg, #1b4f72 0%, #0b253a 100%) !important;
-  color: #ffffff !important;
-  border: 1px solid #5dade2 !important;
-  border-radius: 5px !important;
-  padding: 6px 12px !important;
+  padding: 6px 10px 6px 12px !important;
   cursor: pointer !important;
-  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.8), 0 0 8px rgba(93, 173, 226, 0.4) !important;
-  transition: all 0.16s ease !important;
+  color: #ffffff !important;
+  transition: background 0.14s ease !important;
 }
 
 .idm-grabber-button:hover {
-  background: linear-gradient(180deg, #2471a3 0%, #154360 100%) !important;
-  border-color: #85c1e9 !important;
-  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.9), 0 0 12px rgba(93, 173, 226, 0.6) !important;
-  transform: translateY(-1px) !important;
-}
-
-.idm-grabber-button:active {
-  transform: translateY(0) !important;
+  background: rgba(255, 255, 255, 0.12) !important;
 }
 
 .idm-grabber-icon-box {
@@ -55,6 +60,24 @@
   font-size: 10px !important;
   color: #aed6f1 !important;
   margin-left: 2px !important;
+}
+
+.idm-grabber-close-btn {
+  background: transparent !important;
+  border: none !important;
+  border-left: 1px solid rgba(255, 255, 255, 0.2) !important;
+  color: #cbd5e0 !important;
+  font-size: 14px !important;
+  font-weight: bold !important;
+  padding: 6px 8px !important;
+  cursor: pointer !important;
+  line-height: 1 !important;
+  transition: all 0.14s ease !important;
+}
+
+.idm-grabber-close-btn:hover {
+  background: #c53030 !important;
+  color: #ffffff !important;
 }
 
 .idm-grabber-menu {
