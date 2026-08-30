@@ -190,7 +190,7 @@
           val /= 1024;
           i++;
         }
-        return `${val.toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
+        return `${val.toFixed(2)} ${units[i]}`;
       }
 
       items.forEach((item) => {
@@ -217,6 +217,7 @@
               url: item.url,
               filename: filename,
               quality: item.quality,
+              filesize: item.filesize || 0,
               format: fmtLow
             });
           });

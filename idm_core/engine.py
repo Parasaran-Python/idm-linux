@@ -65,6 +65,7 @@ class DownloadEngine:
         speed_limit: int = 0,
         headers: Optional[Dict[str, str]] = None,
         queue_id: Optional[str] = None,
+        total_bytes: int = 0,
         start_immediately: bool = True
     ) -> str:
         """Probe URL, categorize, register in database, and optionally start download."""
@@ -98,7 +99,7 @@ class DownloadEngine:
             url=url,
             filename=filename,
             save_path=save_path,
-            total_bytes=0,
+            total_bytes=total_bytes,
             category=category,
             connections_count=conn_count,
             headers=headers,
@@ -145,6 +146,7 @@ class DownloadEngine:
                     config=self.config,
                     headers=headers,
                     quality=headers.get("quality"),
+                    total_bytes=record.get("total_bytes", 0),
                     on_progress=self._on_progress_callback,
                     on_complete=self._on_complete_callback,
                     on_error=self._on_error_callback,

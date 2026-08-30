@@ -149,6 +149,34 @@ class TestYTDLPDownloader(unittest.TestCase):
             # Chosen video size should be 370MB + 26MB audio = 396MB (not 664MB + 26MB = 690MB)
             self.assertEqual(fmt_1080["filesize"], 370000000 + 26000000)
 
+    def test_quality_string_normalization(self):
+        sample_json = {
+            "title": "Normalized Video",
+            "ext": "mp4",
+            "formats": [
+                {"height": 1080, "fps": 30, "tbr": 2500, "vcodec": "av01", "acodec": "none", "filesize": 370000000},
+                {"height": 720, "fps": 30, "tbr": 1200, "vcodec": "av01", "acodec": "none", "filesize": 150000000},
+                {"height": None, "vcodec": "none", "acodec": "opus", "filesize": 26000000}
+            ]
+        }
+        import json
+        from unittest.mock import patch, MagicMock
+
+        mock_res = MagicMock()
+        mock_res.returncode = 0
+        mock_res.stdout = json.dumps(sample_json)
+
+        with patch.object(YTDLPDownloader, "is_ytdlp_available", return_value=True), \
+             patch("subprocess.run", return_value=mock_res):
+            # Test "1080p", "1080P", "1080" all match 370MB + 26MB = 396MB
+            info_p = YTDLPDownloader.probe_media_info("https://youtube.com/watch?v=123", quality="1080p")
+            info_plain = YTDLPDownloader.probe_media_info("https://youtube.com/watch?v=123", quality="1080")
+            info_audio = YTDLPDownloader.probe_media_info("https://youtube.com/watch?v=123", quality="audio")
+
+            self.assertEqual(info_p["filesize"], 396000000)
+            self.assertEqual(info_plain["filesize"], 396000000)
+            self.assertEqual(info_audio["filesize"], 26000000)
+
 
 if __name__ == "__main__":
     unittest.main()

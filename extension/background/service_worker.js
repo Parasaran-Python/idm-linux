@@ -326,6 +326,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         filename: request.filename,
         headers: headers,
         quality: request.quality || null,
+        total_bytes: request.filesize || request.total_bytes || 0,
         start_immediately: true
       });
       sendResponse(res);

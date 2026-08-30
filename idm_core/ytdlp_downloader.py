@@ -24,6 +24,7 @@ class YTDLPDownloader:
         speed_limit: int = 0,
         headers: Optional[Dict[str, str]] = None,
         quality: Optional[str] = None,
+        total_bytes: int = 0,
         on_progress: Optional[Callable[[str, Dict[str, Any]], None]] = None,
         on_segment_update: Optional[Callable[[str, List[dict]], None]] = None,
         on_complete: Optional[Callable[[str, str], None]] = None,
@@ -44,7 +45,7 @@ class YTDLPDownloader:
         self.on_log = on_log
 
         self.status = "idle"
-        self.total_bytes = 0
+        self.total_bytes = total_bytes
         self.downloaded_bytes = 0
         self.speed = 0.0
         self.eta = 0.0
@@ -142,13 +143,24 @@ class YTDLPDownloader:
         return 0
 
     @classmethod
+    def _get_acodec_priority(cls, acodec: Optional[str]) -> int:
+        """Score audio codec priority matching yt-dlp's default bestaudio preference."""
+        a = (acodec or "").lower()
+        if "opus" in a:
+            return 30
+        if "mp4a" in a or "aac" in a:
+            return 20
+        if a != "none" and a != "":
+            return 10
+        return 0
+
+    @classmethod
     def _parse_formats_and_tiers(cls, data: Dict[str, Any], url: str) -> List[Dict[str, Any]]:
         """Unified parser ensuring 100% identical format definitions and file sizes across dropdown and dialogs."""
         formats = data.get("formats", [])
         duration = data.get("duration") or 0
         tier_map = {}
         has_audio = False
-        best_audio_sz = 0
 
         def get_format_size(f):
             sz = f.get("filesize") or f.get("filesize_approx") or 0
@@ -157,13 +169,32 @@ class YTDLPDownloader:
                 sz = int((tbr * 1000 / 8) * duration)
             return sz
 
-        # 1. Best audio stream matching yt-dlp
+        # 1. Best audio stream matching yt-dlp (acodec preference + abr/filesize)
+        best_audio_format = None
         for f in formats:
             if f.get("vcodec") == "none" and f.get("acodec") != "none":
                 has_audio = True
+                acodec_score = cls._get_acodec_priority(f.get("acodec"))
+                abr = f.get("abr") or f.get("tbr") or 0
                 sz = get_format_size(f)
-                if sz > best_audio_sz:
-                    best_audio_sz = sz
+
+                is_better_audio = False
+                if best_audio_format is None:
+                    is_better_audio = True
+                else:
+                    curr_score = cls._get_acodec_priority(best_audio_format.get("acodec"))
+                    curr_abr = best_audio_format.get("abr") or best_audio_format.get("tbr") or 0
+                    curr_sz = get_format_size(best_audio_format)
+                    if acodec_score > curr_score:
+                        is_better_audio = True
+                    elif acodec_score == curr_score:
+                        if abr > curr_abr or (abr == curr_abr and sz > curr_sz):
+                            is_better_audio = True
+
+                if is_better_audio:
+                    best_audio_format = f
+
+        best_audio_sz = get_format_size(best_audio_format) if best_audio_format else 0
 
         # 2. Select standard video format matching yt-dlp format selection
         for f in formats:
@@ -278,11 +309,18 @@ class YTDLPDownloader:
             chosen_size = 0
             if quality:
                 q_str = str(quality).lower().strip()
+                q_digits = "".join(filter(str.isdigit, q_str))
+                is_audio_q = "audio" in q_str or "mp3" in q_str
                 for tf in tier_formats:
-                    if tf["quality"] == q_str:
+                    if is_audio_q and tf["quality"] == "audio":
                         chosen_size = tf["filesize"]
-                        if q_str == "audio":
-                            ext = "mp3"
+                        ext = "mp3"
+                        break
+                    elif tf["quality"] == q_str:
+                        chosen_size = tf["filesize"]
+                        break
+                    elif q_digits and (tf["quality"] == q_digits or str(tf.get("height", "")) == q_digits):
+                        chosen_size = tf["filesize"]
                         break
 
             if chosen_size <= 0 and tier_formats:

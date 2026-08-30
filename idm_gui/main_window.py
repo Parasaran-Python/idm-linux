@@ -281,6 +281,7 @@ class MainWindow(QMainWindow):
                     save_path=res["save_path"],
                     category=res["category"],
                     headers=headers,
+                    total_bytes=dlg.file_size,
                     start_immediately=start_imm
                 )
                 self.refresh_downloads()
