@@ -115,6 +115,21 @@
       if (ytResp && ytResp.streamingData) {
         const formats = [];
         const adaptive = (ytResp.streamingData.adaptiveFormats || []).concat(ytResp.streamingData.formats || []);
+        const durationSec = (ytResp.videoDetails && ytResp.videoDetails.lengthSeconds) ? parseInt(ytResp.videoDetails.lengthSeconds, 10) : 0;
+        
+        let bestAudioSize = 0;
+        for (const f of adaptive) {
+          if (!f.height && (f.mimeType && f.mimeType.startsWith("audio/"))) {
+            let sz = parseInt(f.contentLength || 0, 10);
+            if (!sz && f.bitrate && durationSec) {
+              sz = Math.round((f.bitrate / 8) * durationSec);
+            }
+            if (sz > bestAudioSize) {
+              bestAudioSize = sz;
+            }
+          }
+        }
+
         const seen = new Set();
         for (const f of adaptive) {
           if (f.height && !seen.has(f.height)) {
@@ -125,12 +140,20 @@
             else if (f.height >= 1080) label += " (Full HD)";
             else if (f.height >= 720) label += " (HD)";
             else label += " (SD)";
+
+            let rawSz = parseInt(f.contentLength || 0, 10);
+            if (!rawSz && f.bitrate && durationSec) {
+              rawSz = Math.round((f.bitrate / 8) * durationSec);
+            }
+            const isSeparate = !f.audioChannels && (!f.mimeType || !f.mimeType.includes("audio"));
+            const totalSz = rawSz + (isSeparate ? bestAudioSize : 0);
+
             formats.push({
               label: label,
               height: f.height,
               quality: String(f.height),
               format: "MP4",
-              filesize: 0,
+              filesize: totalSz,
               url: currentUrl
             });
           }
@@ -142,7 +165,7 @@
             height: 0,
             quality: "audio",
             format: "MP3",
-            filesize: 0,
+            filesize: bestAudioSize,
             url: currentUrl
           });
           document.dispatchEvent(new CustomEvent("__idm_discovered_formats", {
