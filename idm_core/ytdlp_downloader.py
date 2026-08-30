@@ -120,11 +120,14 @@ class YTDLPDownloader:
             "--progress",
             "-N", "8",
             "--no-playlist",
+            "--extractor-args", "youtube:player_client=android,web,tv",
+            "--no-check-certificates",
+            "--geo-bypass",
             "--remote-components", "ejs:github",
             "-o", self.save_path,
         ]
 
-        # Quality and format selection
+        # Quality and format selection with resilient automatic fallback
         q_str = str(self.quality or self.headers.get("quality", "")).lower().strip()
         is_audio = "audio" in q_str or "mp3" in q_str or self.save_path.lower().endswith((".mp3", ".m4a", ".aac"))
 
@@ -133,11 +136,11 @@ class YTDLPDownloader:
         elif q_str:
             height = "".join(filter(str.isdigit, q_str))
             if height:
-                cmd.extend(["-f", f"bestvideo[height<={height}]+bestaudio/best[height<={height}]/best[height<={height}]/best"])
+                cmd.extend(["-f", f"bestvideo[height<={height}]+bestaudio/best[height<={height}]/bestvideo+bestaudio/best/18/best"])
             else:
-                cmd.extend(["-f", "bestvideo+bestaudio/best"])
+                cmd.extend(["-f", "bestvideo+bestaudio/best/18/best"])
         else:
-            cmd.extend(["-f", "bestvideo+bestaudio/best"])
+            cmd.extend(["-f", "bestvideo+bestaudio/best/18/best"])
 
         # Add node js runtime if present
         if shutil.which("node"):
@@ -152,6 +155,7 @@ class YTDLPDownloader:
 
         self.log(f"Starting video stream download with {bin_name} (quality: {q_str or 'best'})...")
 
+        last_error_line = ""
         try:
             self._process = subprocess.Popen(
                 cmd,
@@ -165,6 +169,8 @@ class YTDLPDownloader:
             # e.g.: [download]  45.2% of  120.50MiB at  4.52MiB/s ETA 00:14
             for line in self._process.stdout:
                 line = line.strip()
+                if "ERROR:" in line or "error:" in line.lower():
+                    last_error_line = line
                 if self._stop_event.is_set() or self._pause_event.is_set():
                     break
                 self._parse_line(line)
@@ -205,7 +211,7 @@ class YTDLPDownloader:
                     self.on_complete(self.download_id, final_path)
             else:
                 self.status = "error"
-                err_msg = f"yt-dlp exited with code {ret_code}"
+                err_msg = last_error_line or f"yt-dlp exited with code {ret_code}"
                 if self.on_error:
                     self.on_error(self.download_id, err_msg)
 
