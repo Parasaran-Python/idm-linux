@@ -363,23 +363,29 @@ class MainWindow(QMainWindow):
         self._show_progress_dialog(download_id)
 
     def _show_progress_dialog(self, download_id: str):
-        dl = self.engine.get_download_info(download_id)
-        if not dl:
-            return
+        try:
+            dl = self.engine.get_download_info(download_id)
+            if not dl:
+                return
 
-        if download_id not in self.progress_dialogs or not self.progress_dialogs[download_id].isVisible():
-            dlg = DownloadProgressDialog(download_id, dl.get("filename", "Download"), save_path=dl.get("save_path", ""), parent=self)
-            dlg.pause_requested.connect(self.engine.pause_download)
-            dlg.resume_requested.connect(self.engine.resume_download)
-            dlg.cancel_requested.connect(lambda did: self.engine.delete_download(did, delete_files=True))
-            dlg.speed_limit_changed.connect(lambda did, limit: self._set_dl_speed_limit(did, limit))
+            if download_id not in self.progress_dialogs or not self.progress_dialogs[download_id].isVisible():
+                parent_widget = self if (self.isVisible() and self.windowHandle() is not None) else None
+                dlg = DownloadProgressDialog(download_id, dl.get("filename", "Download"), save_path=dl.get("save_path", ""), parent=parent_widget)
+                dlg.setWindowFlags(Qt.WindowType.Window)
+                dlg.pause_requested.connect(self.engine.pause_download)
+                dlg.resume_requested.connect(self.engine.resume_download)
+                dlg.cancel_requested.connect(lambda did: self.engine.delete_download(did, delete_files=True))
+                dlg.speed_limit_changed.connect(lambda did, limit: self._set_dl_speed_limit(did, limit))
 
-            self.progress_dialogs[download_id] = dlg
-            dlg.update_progress(dl)
-            dlg.show()
-        else:
-            self.progress_dialogs[download_id].raise_()
-            self.progress_dialogs[download_id].activateWindow()
+                self.progress_dialogs[download_id] = dlg
+                dlg.update_progress(dl)
+                dlg.show()
+            else:
+                self.progress_dialogs[download_id].show()
+                self.progress_dialogs[download_id].raise_()
+                self.progress_dialogs[download_id].activateWindow()
+        except Exception as e:
+            print(f"[IDM GUI Error] _show_progress_dialog failed: {e}")
 
     def _set_dl_speed_limit(self, download_id: str, limit_bps: int):
         downloader = self.engine.active_downloaders.get(download_id)
@@ -387,14 +393,20 @@ class MainWindow(QMainWindow):
             downloader.set_speed_limit(limit_bps)
 
     def _on_engine_progress(self, stats: dict):
-        dl_id = stats.get("download_id")
-        if dl_id and dl_id in self.progress_dialogs:
-            self.progress_dialogs[dl_id].update_progress(stats)
+        try:
+            dl_id = stats.get("download_id")
+            if dl_id and dl_id in self.progress_dialogs:
+                self.progress_dialogs[dl_id].update_progress(stats)
+        except Exception as e:
+            pass
 
     def _on_engine_segment_update(self, data: dict):
-        dl_id = data.get("download_id")
-        if dl_id and dl_id in self.progress_dialogs:
-            self.progress_dialogs[dl_id].update_segments(data.get("segments", []))
+        try:
+            dl_id = data.get("download_id")
+            if dl_id and dl_id in self.progress_dialogs:
+                self.progress_dialogs[dl_id].update_segments(data.get("segments", []))
+        except Exception as e:
+            pass
 
     def _on_category_selected(self, category: str):
         self.current_category = category
