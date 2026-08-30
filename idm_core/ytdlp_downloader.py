@@ -117,8 +117,21 @@ class YTDLPDownloader:
 
             data = json.loads(res.stdout)
             formats = data.get("formats", [])
+            duration = data.get("duration") or 0
             tier_map = {}
             has_audio = False
+            best_audio_sz = 0
+
+            # Find best audio stream size
+            for f in formats:
+                if f.get("vcodec") == "none" and f.get("acodec") != "none":
+                    has_audio = True
+                    sz = f.get("filesize") or f.get("filesize_approx") or 0
+                    tbr = f.get("tbr") or f.get("abr") or 0
+                    if not sz and tbr and duration:
+                        sz = int((tbr * 1000 / 8) * duration)
+                    if sz > best_audio_sz:
+                        best_audio_sz = sz
 
             for f in formats:
                 h = f.get("height")
@@ -131,6 +144,11 @@ class YTDLPDownloader:
                     fps = f.get("fps") or 30
                     filesize = f.get("filesize") or f.get("filesize_approx") or 0
                     tbr = f.get("tbr") or f.get("vbr") or 0
+                    if not filesize and tbr and duration:
+                        filesize = int((tbr * 1000 / 8) * duration)
+                    # Add audio stream size if separate
+                    if acodec == "none" and best_audio_sz > 0:
+                        filesize += best_audio_sz
 
                     if h not in tier_map or (fps > tier_map[h]["fps"]) or (fps == tier_map[h]["fps"] and tbr > tier_map[h]["tbr"]):
                         label = f"{h}p"
@@ -169,13 +187,88 @@ class YTDLPDownloader:
                     "height": 0,
                     "quality": "audio",
                     "format": "MP3",
-                    "filesize": 0,
+                    "filesize": best_audio_sz,
                     "url": url
                 })
 
             return video_formats
         except Exception:
             return []
+
+    @classmethod
+    def probe_media_info(cls, url: str, quality: Optional[str] = None) -> Dict[str, Any]:
+        """Fast metadata probe to retrieve authentic video title, filename, and exact or estimated filesize."""
+        if not cls.is_ytdlp_available() or not url:
+            return {"title": "", "filename": "", "filesize": 0}
+
+        bin_name = "yt-dlp" if shutil.which("yt-dlp") else "youtube-dl"
+        cmd = [
+            bin_name,
+            "-J",
+            "--no-playlist",
+            "--no-check-certificates",
+            "--geo-bypass",
+            "--remote-components", "ejs:github"
+        ]
+        cmd.extend(cls._get_js_runtime_args())
+        cmd.extend(cls._get_extractor_args(url))
+        cmd.append(url)
+
+        try:
+            res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, timeout=15)
+            if res.returncode != 0 or not res.stdout:
+                return {"title": "", "filename": "", "filesize": 0}
+
+            data = json.loads(res.stdout)
+            raw_title = data.get("title") or ""
+            clean_title = re.sub(r'[\\/:*?"<>|]', '_', raw_title).strip()
+            ext = data.get("ext") or "mp4"
+            duration = data.get("duration") or 0
+            formats = data.get("formats", [])
+
+            # Calculate best audio stream size
+            best_audio_sz = 0
+            for f in formats:
+                if f.get("vcodec") == "none" and f.get("acodec") != "none":
+                    sz = f.get("filesize") or f.get("filesize_approx") or 0
+                    tbr = f.get("tbr") or f.get("abr") or 0
+                    if not sz and tbr and duration:
+                        sz = int((tbr * 1000 / 8) * duration)
+                    if sz > best_audio_sz:
+                        best_audio_sz = sz
+
+            target_height = int(quality) if quality and quality.isdigit() else 0
+            chosen_video_sz = 0
+            for f in formats:
+                h = f.get("height") or 0
+                vcodec = f.get("vcodec", "none")
+                if vcodec != "none" and h > 0:
+                    if target_height > 0 and h > target_height:
+                        continue
+                    sz = f.get("filesize") or f.get("filesize_approx") or 0
+                    tbr = f.get("tbr") or f.get("vbr") or 0
+                    if not sz and tbr and duration:
+                        sz = int((tbr * 1000 / 8) * duration)
+                    if sz > chosen_video_sz:
+                        chosen_video_sz = sz
+
+            if quality == "audio":
+                total_size = best_audio_sz
+                ext = "mp3"
+            elif chosen_video_sz > 0:
+                total_size = chosen_video_sz + best_audio_sz
+            else:
+                total_size = data.get("filesize") or data.get("filesize_approx") or 0
+
+            filename = f"{clean_title}.{ext}" if clean_title else ""
+            return {
+                "title": clean_title,
+                "filename": filename,
+                "filesize": total_size,
+                "duration": duration
+            }
+        except Exception:
+            return {"title": "", "filename": "", "filesize": 0}
 
     def log(self, msg: str):
         if self.on_log:

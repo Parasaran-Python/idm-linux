@@ -83,6 +83,11 @@ class TestStreamDownloader(unittest.TestCase):
         self.assertTrue(segments[1].endswith("seg2.ts"))
         self.assertTrue(segments[2].endswith("seg3.ts"))
 
+    def test_probe_stream_info(self):
+        info = HLSParser.probe_stream_info(self.m3u8_url)
+        self.assertEqual(info["duration"], 30.0)
+        self.assertTrue(info["filesize"] > 0)
+
     def test_stream_downloader_download(self):
         dest_path = os.path.join(self.test_dir, "Downloads", "video.ts")
         completed_event = threading.Event()

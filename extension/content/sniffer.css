@@ -165,3 +165,10 @@
   font-weight: bold !important;
   border: 1px solid #2e4053 !important;
 }
+
+.idm-menu-item-size {
+  color: #38bdf8 !important;
+  font-size: 11px !important;
+  font-weight: 500 !important;
+  margin-left: 5px !important;
+}

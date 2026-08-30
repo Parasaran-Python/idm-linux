@@ -69,6 +69,32 @@ class TestYTDLPDownloader(unittest.TestCase):
         dl_audio = YTDLPDownloader("id2", "https://youtube.com/watch?v=1", "/tmp/v.mp3", quality="audio")
         self.assertEqual(dl_audio.quality, "audio")
 
+    def test_probe_media_info_mock(self):
+        sample_json = {
+            "title": "Sample Video Title",
+            "ext": "mp4",
+            "duration": 120,
+            "formats": [
+                {"height": 1080, "fps": 60, "tbr": 4000, "vcodec": "avc1", "acodec": "none", "filesize": 50000000},
+                {"height": 720, "fps": 30, "tbr": 2000, "vcodec": "avc1", "acodec": "none", "filesize": 25000000},
+                {"height": None, "vcodec": "none", "acodec": "opus", "filesize": 5000000}
+            ]
+        }
+        import json
+        from unittest.mock import patch, MagicMock
+
+        mock_res = MagicMock()
+        mock_res.returncode = 0
+        mock_res.stdout = json.dumps(sample_json)
+
+        with patch.object(YTDLPDownloader, "is_ytdlp_available", return_value=True), \
+             patch("subprocess.run", return_value=mock_res):
+            info = YTDLPDownloader.probe_media_info("https://example.com/video", quality="1080")
+            self.assertEqual(info["title"], "Sample Video Title")
+            self.assertEqual(info["filename"], "Sample Video Title.mp4")
+            # 50MB video + 5MB audio = 55MB
+            self.assertEqual(info["filesize"], 55000000)
+
 
 if __name__ == "__main__":
     unittest.main()

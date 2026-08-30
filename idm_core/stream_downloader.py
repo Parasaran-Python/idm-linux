@@ -69,6 +69,47 @@ class HLSParser:
         with urllib.request.urlopen(req, timeout=15) as resp:
             return resp.read().decode("utf-8", errors="ignore")
 
+    @classmethod
+    def probe_stream_info(cls, m3u8_url: str, headers: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
+        """Estimate total stream duration, bitrate, and filesize for an HLS playlist."""
+        try:
+            parser = cls(m3u8_url, headers=headers)
+            content = parser._fetch_text(m3u8_url)
+            lines = [line.strip() for line in content.splitlines() if line.strip()]
+
+            bandwidth = 0
+            variant_url = m3u8_url
+            if any(line.startswith("#EXT-X-STREAM-INF") for line in lines):
+                for i, line in enumerate(lines):
+                    if line.startswith("#EXT-X-STREAM-INF"):
+                        match = re.search(r"BANDWIDTH=(\d+)", line)
+                        bw = int(match.group(1)) if match else 0
+                        if bw > bandwidth and i + 1 < len(lines) and not lines[i + 1].startswith("#"):
+                            bandwidth = bw
+                            variant_url = urllib.parse.urljoin(m3u8_url, lines[i + 1])
+                if variant_url != m3u8_url:
+                    content = parser._fetch_text(variant_url)
+                    lines = [line.strip() for line in content.splitlines() if line.strip()]
+
+            total_duration = 0.0
+            for line in lines:
+                if line.startswith("#EXTINF:"):
+                    match = re.search(r"#EXTINF:([\d.]+)", line)
+                    if match:
+                        total_duration += float(match.group(1))
+
+            if not bandwidth:
+                bandwidth = 2500000  # Default fallback 2.5 Mbps
+
+            estimated_size = int((bandwidth / 8) * total_duration) if total_duration > 0 else 0
+            return {
+                "duration": total_duration,
+                "bandwidth": bandwidth,
+                "filesize": estimated_size
+            }
+        except Exception:
+            return {"duration": 0, "bandwidth": 0, "filesize": 0}
+
 
 class StreamDownloader:
     def __init__(

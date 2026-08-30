@@ -181,11 +181,24 @@
         }
       }
 
+      function formatBytes(bytes) {
+        if (!bytes || bytes <= 0) return "";
+        const units = ["B", "KB", "MB", "GB", "TB"];
+        let i = 0;
+        let val = bytes;
+        while (val >= 1024 && i < units.length - 1) {
+          val /= 1024;
+          i++;
+        }
+        return `${val.toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
+      }
+
       items.forEach((item) => {
         const row = document.createElement("div");
         row.className = "idm-grabber-menu-item" + (item.disabled ? " idm-menu-item-disabled" : "");
+        const sizeStr = item.filesize && item.filesize > 0 ? ` <span class="idm-menu-item-size">(${formatBytes(item.filesize)})</span>` : "";
         row.innerHTML = `
-          <span class="idm-menu-item-text">${item.label}</span>
+          <span class="idm-menu-item-text">${item.label}${sizeStr}</span>
           <span class="idm-menu-item-badge">${item.format}</span>
         `;
         if (!item.disabled) {
