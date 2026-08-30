@@ -14,7 +14,7 @@ from idm_core.config import Config
 from idm_core.engine import DownloadEngine
 from idm_gui.main_window import MainWindow
 from idm_gui.styles import IDM_DARK_THEME
-from idm_gui.tray import IDMTrayIcon, create_tray_icon_pixmap
+from idm_gui.tray import IDMTrayIcon, create_tray_icon_pixmap, create_app_icon
 from idm_ipc.socket_client import IPCClient
 from idm_ipc.socket_server import IPCServer
 
@@ -78,9 +78,11 @@ def main():
     app = QApplication(sys.argv)
     app.setQuitOnLastWindowClosed(False)
     app.setStyle("Fusion")
-    app.setApplicationName("IDM Linux")
+    app.setApplicationName("idm-linux")
+    app.setApplicationDisplayName("IDM Linux")
     app.setOrganizationName("IDM Linux Team")
-    app.setWindowIcon(QIcon(create_tray_icon_pixmap()))
+    app.setDesktopFileName("idm-linux.desktop")
+    app.setWindowIcon(create_app_icon())
     app.setStyleSheet(IDM_DARK_THEME)
 
     # Start core engine and IPC server

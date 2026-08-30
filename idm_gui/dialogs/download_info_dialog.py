@@ -4,8 +4,12 @@ Classic IDM-style prompt for URL, Save Location, Category, File Size, and Downlo
 """
 
 import os
-from typing import Optional
-from PyQt6.QtCore import Qt
+import re
+import threading
+import urllib.parse
+import urllib.request
+from typing import Optional, Dict
+from PyQt6.QtCore import Qt, QObject, pyqtSignal
 from PyQt6.QtWidgets import (
     QComboBox,
     QDialog,
@@ -21,6 +25,65 @@ from PyQt6.QtWidgets import (
 from idm_gui.widgets.download_table import format_bytes
 
 
+class ProbeWorker(QObject):
+    probed = pyqtSignal(int, str)  # size, filename
+
+    def __init__(self, url: str, headers: Optional[Dict[str, str]] = None):
+        super().__init__()
+        self.url = url
+        self.headers = headers or {}
+
+    def start(self):
+        threading.Thread(target=self._run, daemon=True).start()
+
+    def _run(self):
+        try:
+            if not self.url or not self.url.startswith(("http://", "https://", "ftp://")):
+                return
+            headers = {
+                "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
+                "Accept": "*/*",
+                **self.headers
+            }
+            req = urllib.request.Request(self.url, headers=headers)
+            req.get_method = lambda: "HEAD"
+            size = 0
+            filename = ""
+            try:
+                with urllib.request.urlopen(req, timeout=3.5) as resp:
+                    cl = resp.headers.get("Content-Length")
+                    if cl and cl.isdigit():
+                        size = int(cl)
+                    cd = resp.headers.get("Content-Disposition", "")
+                    if "filename=" in cd:
+                        m = re.search(r'filename\*?=(?:UTF-8\'\')?["\']?([^";\n\r]+)["\']?', cd, re.I)
+                        if m:
+                            filename = m.group(1).strip()
+            except Exception:
+                try:
+                    req_get = urllib.request.Request(self.url, headers={**headers, "Range": "bytes=0-0"})
+                    with urllib.request.urlopen(req_get, timeout=3.5) as resp:
+                        cr = resp.headers.get("Content-Range", "")
+                        if "/" in cr:
+                            tot = cr.split("/")[-1].strip()
+                            if tot.isdigit():
+                                size = int(tot)
+                        elif resp.headers.get("Content-Length", "").isdigit():
+                            size = int(resp.headers.get("Content-Length"))
+                        cd = resp.headers.get("Content-Disposition", "")
+                        if "filename=" in cd:
+                            m = re.search(r'filename\*?=(?:UTF-8\'\')?["\']?([^";\n\r]+)["\']?', cd, re.I)
+                            if m:
+                                filename = m.group(1).strip()
+                except Exception:
+                    pass
+
+            if size > 0 or filename:
+                self.probed.emit(size, filename)
+        except Exception:
+            pass
+
+
 class DownloadInfoDialog(QDialog):
     def __init__(
         self,
@@ -29,6 +92,7 @@ class DownloadInfoDialog(QDialog):
         save_path: str = "",
         category: str = "General",
         file_size: int = 0,
+        headers: Optional[dict] = None,
         parent=None
     ):
         super().__init__(parent)
@@ -37,8 +101,30 @@ class DownloadInfoDialog(QDialog):
         self.setAttribute(Qt.WidgetAttribute.WA_QuitOnClose, False)
         self.setMinimumWidth(560)
         self.start_immediately = True
+        self.headers = headers or {}
+        self.file_size = file_size
+        self.probe_worker: Optional[ProbeWorker] = None
 
         self._setup_ui(url, filename, save_path, category, file_size)
+
+        if self.file_size <= 0 and url:
+            self._start_probe(url)
+
+    def _start_probe(self, url: str):
+        self.probe_worker = ProbeWorker(url, self.headers)
+        self.probe_worker.probed.connect(self._on_probed)
+        self.probe_worker.start()
+
+    def _on_probed(self, size: int, filename: str):
+        if size > 0:
+            self.file_size = size
+            self.size_label.setText(format_bytes(size))
+        if filename:
+            cur_path = self.save_edit.text()
+            cur_dir = os.path.dirname(cur_path) if cur_path else os.path.expanduser("~/Downloads")
+            cur_fn = os.path.basename(cur_path)
+            if not cur_fn or cur_fn in ["download", "videoplayback", "stream"]:
+                self.save_edit.setText(os.path.join(cur_dir, filename))
 
     def _setup_ui(self, url: str, filename: str, save_path: str, category: str, file_size: int):
         layout = QVBoxLayout(self)

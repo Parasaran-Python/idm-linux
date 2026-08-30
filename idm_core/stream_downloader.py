@@ -166,7 +166,7 @@ class StreamDownloader:
             for t in self._workers:
                 t.join()
 
-            if self._stop_event.is_set() or self._pause_event.is_set():
+            if self._stop_event.is_set() or self._pause_event.is_set() or self.status in ["paused", "cancelled"]:
                 return
 
             self._finalize_stream()

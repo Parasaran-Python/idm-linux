@@ -189,9 +189,9 @@ class DownloadEngine:
                 downloader = self.active_downloaders[download_id]
                 downloader.pause()
                 self._persist_download_state(download_id, downloader)
-                self.database.update_download(download_id, status="paused", speed=0)
                 del self.active_downloaders[download_id]
-                self.notify("download_paused", {"download_id": download_id})
+            self.database.update_download(download_id, status="paused", speed=0)
+            self.notify("download_paused", {"download_id": download_id})
 
     def resume_download(self, download_id: str):
         """Resume a paused download."""
@@ -296,7 +296,14 @@ class DownloadEngine:
     def _on_complete_callback(self, download_id: str, filepath: str):
         with self._lock:
             if download_id in self.active_downloaders:
+                dl = self.active_downloaders[download_id]
+                if getattr(dl, "status", "") in ["paused", "cancelled"]:
+                    return
                 del self.active_downloaders[download_id]
+            else:
+                rec = self.database.get_download(download_id)
+                if rec and rec.get("status") in ["paused", "cancelled"]:
+                    return
 
         file_size = os.path.getsize(filepath) if os.path.exists(filepath) else 0
         self.database.update_download(
@@ -334,6 +341,14 @@ class DownloadEngine:
                 download_id,
                 downloaded_bytes=downloader.allocator.get_total_downloaded(),
                 total_bytes=downloader.total_bytes
+            )
+        else:
+            dl_bytes = getattr(downloader, "downloaded_bytes", 0)
+            tot_bytes = getattr(downloader, "total_bytes", 0)
+            self.database.update_download(
+                download_id,
+                downloaded_bytes=dl_bytes,
+                total_bytes=tot_bytes
             )
 
     def shutdown(self):

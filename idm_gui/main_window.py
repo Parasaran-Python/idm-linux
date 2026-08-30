@@ -39,6 +39,9 @@ class EngineEventBridge(QObject):
     download_progress = pyqtSignal(dict)
     segment_update = pyqtSignal(dict)
     download_started = pyqtSignal(dict)
+    download_paused = pyqtSignal(dict)
+    download_completed = pyqtSignal(dict)
+    download_error = pyqtSignal(dict)
     download_requested = pyqtSignal(dict)
     show_gui = pyqtSignal(dict)
 
@@ -218,6 +221,9 @@ class MainWindow(QMainWindow):
         self.bridge.download_progress.connect(self._on_engine_progress)
         self.bridge.segment_update.connect(self._on_engine_segment_update)
         self.bridge.download_started.connect(self._on_engine_download_started)
+        self.bridge.download_paused.connect(self._on_engine_download_paused)
+        self.bridge.download_completed.connect(self._on_engine_download_completed)
+        self.bridge.download_error.connect(self._on_engine_download_error)
         self.bridge.download_requested.connect(self._handle_download_requested)
         self.bridge.show_gui.connect(self._on_engine_show_gui)
 
@@ -225,6 +231,9 @@ class MainWindow(QMainWindow):
         self.engine.register_listener("download_progress", lambda d: self.bridge.download_progress.emit(d))
         self.engine.register_listener("segment_update", lambda d: self.bridge.segment_update.emit(d))
         self.engine.register_listener("download_started", lambda d: self.bridge.download_started.emit(d))
+        self.engine.register_listener("download_paused", lambda d: self.bridge.download_paused.emit(d))
+        self.engine.register_listener("download_completed", lambda d: self.bridge.download_completed.emit(d))
+        self.engine.register_listener("download_error", lambda d: self.bridge.download_error.emit(d))
         self.engine.register_listener("download_requested", lambda d: self.bridge.download_requested.emit(d))
         self.engine.register_listener("show_gui", lambda d: self.bridge.show_gui.emit(d))
 
@@ -255,6 +264,7 @@ class MainWindow(QMainWindow):
                 save_path=save_path,
                 category=category,
                 file_size=total_bytes,
+                headers=headers,
                 parent=None
             )
             dlg.setWindowFlags(Qt.WindowType.Window | Qt.WindowType.WindowStaysOnTopHint)
@@ -289,9 +299,37 @@ class MainWindow(QMainWindow):
     def _on_engine_download_started(self, data: dict):
         dl_id = data.get("download_id")
         if dl_id:
-            # Open individual download progress window
+            # Open or update individual download progress window
             self._show_progress_dialog(dl_id)
+            if dl_id in self.progress_dialogs:
+                info = self.engine.get_download_info(dl_id)
+                if info:
+                    self.progress_dialogs[dl_id].update_progress(info)
             self.refresh_downloads()
+
+    def _on_engine_download_paused(self, data: dict):
+        dl_id = data.get("download_id")
+        if dl_id and dl_id in self.progress_dialogs:
+            info = self.engine.get_download_info(dl_id)
+            if info:
+                self.progress_dialogs[dl_id].update_progress(info)
+        self.refresh_downloads()
+
+    def _on_engine_download_completed(self, data: dict):
+        dl_id = data.get("download_id")
+        if dl_id and dl_id in self.progress_dialogs:
+            info = self.engine.get_download_info(dl_id)
+            if info:
+                self.progress_dialogs[dl_id].update_progress(info)
+        self.refresh_downloads()
+
+    def _on_engine_download_error(self, data: dict):
+        dl_id = data.get("download_id")
+        if dl_id and dl_id in self.progress_dialogs:
+            info = self.engine.get_download_info(dl_id)
+            if info:
+                self.progress_dialogs[dl_id].update_progress(info)
+        self.refresh_downloads()
 
     def refresh_downloads(self):
         """Fetch updated downloads list and refresh table & stats."""
@@ -452,10 +490,12 @@ class MainWindow(QMainWindow):
                 dlg.raise_()
                 dlg.activateWindow()
             else:
-                self.progress_dialogs[download_id].showNormal()
-                self.progress_dialogs[download_id].show()
-                self.progress_dialogs[download_id].raise_()
-                self.progress_dialogs[download_id].activateWindow()
+                dlg = self.progress_dialogs[download_id]
+                dlg.update_progress(dl)
+                dlg.showNormal()
+                dlg.show()
+                dlg.raise_()
+                dlg.activateWindow()
         except Exception as e:
             print(f"[IDM GUI Error] _show_progress_dialog failed: {e}")
 

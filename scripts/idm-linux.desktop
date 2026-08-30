@@ -9,6 +9,7 @@ Type=Application
 Categories=Network;FileTransfer;P2P;
 MimeType=x-scheme-handler/idm;x-scheme-handler/http;x-scheme-handler/https;
 StartupNotify=true
+StartupWMClass=idm-linux
 Actions=AddUrl;StartQueue;StopAll;
 
 [Desktop Action AddUrl]

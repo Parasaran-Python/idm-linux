@@ -196,11 +196,16 @@ class DownloadProgressDialog(QDialog):
             if self.status == "completed":
                 self.progress_bar.setFormat(f"100% ({format_bytes(dl_bytes)})")
             elif dl_bytes > 0:
-                self.progress_bar.setFormat(f"{format_bytes(dl_bytes)} (Unknown size)")
+                self.progress_bar.setFormat(f"{format_bytes(dl_bytes)} ({self.status.capitalize()})")
+            else:
+                self.progress_bar.setFormat(f"0% ({self.status.capitalize()})")
 
         self.speed_graph.add_speed_sample(speed)
 
-        if self.status == "completed":
+        raw_status = str(stats.get("status", "downloading")).strip().lower()
+        self.status = raw_status
+
+        if self.status in ["completed", "finished"]:
             self.status_label.setStyleSheet("font-weight: bold; color: #4299e1;")
             self.status_label.setText("Download Complete")
 
@@ -215,12 +220,30 @@ class DownloadProgressDialog(QDialog):
             self.limit_check.setEnabled(False)
             self.limit_slider.setEnabled(False)
 
-        elif self.status == "paused":
+        elif self.status in ["paused", "stopped"]:
+            self.btn_pause.show()
+            self.btn_cancel.show()
+            self.btn_hide.show()
+            self.btn_open.hide()
+            self.btn_open_folder.hide()
+            self.btn_close.hide()
             self.btn_pause.setText("Resume")
             self.status_label.setStyleSheet("font-weight: bold; color: #dd6b20;")
-        elif self.status == "downloading":
+            self.status_label.setText("Paused")
+            self.eta_label.setText("Paused")
+            self.speed_label.setText("0 B/s")
+
+        else:
+            # Downloading / Active / Queued
+            self.btn_pause.show()
+            self.btn_cancel.show()
+            self.btn_hide.show()
+            self.btn_open.hide()
+            self.btn_open_folder.hide()
+            self.btn_close.hide()
             self.btn_pause.setText("Pause")
             self.status_label.setStyleSheet("font-weight: bold; color: #48bb78;")
+            self.status_label.setText("Downloading")
 
     def update_segments(self, segments: List[dict]):
         self.segment_visualizer.set_segments(segments, self.total_bytes)
@@ -230,8 +253,18 @@ class DownloadProgressDialog(QDialog):
 
     def _on_pause_toggle(self):
         if self.status == "downloading":
+            self.status = "paused"
+            self.btn_pause.setText("Resume")
+            self.status_label.setText("Paused")
+            self.status_label.setStyleSheet("font-weight: bold; color: #dd6b20;")
+            self.eta_label.setText("Paused")
+            self.speed_label.setText("0 B/s")
             self.pause_requested.emit(self.download_id)
         else:
+            self.status = "downloading"
+            self.btn_pause.setText("Pause")
+            self.status_label.setText("Downloading")
+            self.status_label.setStyleSheet("font-weight: bold; color: #48bb78;")
             self.resume_requested.emit(self.download_id)
 
     def _on_cancel(self):

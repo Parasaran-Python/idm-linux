@@ -286,10 +286,10 @@ class YTDLPDownloader:
             self._process.wait()
             ret_code = self._process.returncode
 
-            if self._stop_event.is_set() or self._pause_event.is_set():
+            if self._stop_event.is_set() or self._pause_event.is_set() or self.status in ["paused", "cancelled"]:
                 return
 
-            if ret_code == 0:
+            if ret_code == 0 and self.status not in ["paused", "cancelled"]:
                 self.status = "completed"
                 # Check actual downloaded file
                 final_path = self.save_path
