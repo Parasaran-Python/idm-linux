@@ -239,13 +239,13 @@ class SegmentDownloader:
         """Worker thread executing segment downloads with dynamic chunk splitting."""
         self.log(f"Worker {worker_id} started.")
         
-        while not self._stop_event.is_set() and not self._pause_event.is_set():
+        while not self._stop_event.is_set() and not self._pause_event.is_set() and self.status not in ["paused", "cancelled"]:
             segment: Optional[Segment] = None
 
-            # 1. Look for a queued segment
+            # 1. Look for a queued or errored segment
             with self._lock:
                 for s in self.allocator.get_segments():
-                    if s.status == "queued":
+                    if s.status in ["queued", "error"]:
                         segment = s
                         self.allocator.set_segment_status(s.index, "downloading", worker_id=worker_id)
                         break
@@ -264,25 +264,39 @@ class SegmentDownloader:
                 if self.allocator.is_complete():
                     self._check_and_finalize()
                     break
-                time.sleep(0.05)
+                time.sleep(0.1)
                 continue
 
             # 3. Download the assigned segment
             success = self._download_segment(worker_id, segment)
-            if success:
+            if success and not self._pause_event.is_set() and not self._stop_event.is_set() and self.status not in ["paused", "cancelled"]:
                 self.allocator.mark_completed(segment.index)
                 if self.allocator.is_complete():
                     self._check_and_finalize()
                     break
             else:
-                if self._pause_event.is_set() or self._stop_event.is_set():
+                if self._pause_event.is_set() or self._stop_event.is_set() or self.status in ["paused", "cancelled"]:
                     break
+                # Segment was interrupted or had a network glitch: requeue it so it can be resumed
+                with self._lock:
+                    if segment.status != "completed":
+                        self.allocator.set_segment_status(segment.index, "queued", worker_id=None)
                 time.sleep(0.5)
 
         self.log(f"Worker {worker_id} stopped.")
 
     def _download_segment(self, worker_id: int, segment: Segment) -> bool:
         """Fetch byte range over HTTP and write to segment temporary file."""
+        # Align segment.current_byte with the actual bytes present on disk to avoid drift on pause/resume
+        if segment.temp_path and os.path.exists(segment.temp_path):
+            actual_size = os.path.getsize(segment.temp_path)
+            expected_max = segment.end_byte - segment.start_byte + 1 if segment.end_byte >= 0 else actual_size
+            if actual_size > expected_max and expected_max >= 0:
+                with open(segment.temp_path, "r+b") as f:
+                    f.truncate(expected_max)
+                actual_size = expected_max
+            segment.current_byte = segment.start_byte + actual_size
+
         if segment.end_byte >= 0 and segment.current_byte > segment.end_byte:
             return True
 
@@ -295,7 +309,7 @@ class SegmentDownloader:
         try:
             req = urllib.request.Request(self.final_url, headers=headers)
             with urllib.request.urlopen(req, timeout=self.config.network_timeout) as resp:
-                while not self._stop_event.is_set() and not self._pause_event.is_set():
+                while not self._stop_event.is_set() and not self._pause_event.is_set() and self.status not in ["paused", "cancelled"]:
                     if segment.end_byte >= 0 and segment.current_byte > segment.end_byte:
                         return True
 
@@ -318,11 +332,18 @@ class SegmentDownloader:
                         self.allocator.update_progress(segment.index, chunk_len)
                         self._speed_window_bytes += chunk_len
 
+            if self._stop_event.is_set() or self._pause_event.is_set() or self.status in ["paused", "cancelled"]:
+                return False
+
+            if segment.end_byte >= 0 and segment.current_byte <= segment.end_byte:
+                return False
+
             return True
 
         except Exception as e:
-            self.log(f"Worker {worker_id} segment {segment.index} error: {e}")
-            self.allocator.mark_error(segment.index, str(e))
+            self.log(f"Worker {worker_id} segment {segment.index} error ({e}), will retry...")
+            with self._lock:
+                self.allocator.set_segment_status(segment.index, "queued", error_msg=str(e))
             return False
 
     def _check_and_finalize(self):
@@ -331,6 +352,8 @@ class SegmentDownloader:
             if self._finalized:
                 return
             if not self.allocator or not self.allocator.is_complete():
+                return
+            if self._stop_event.is_set() or self._pause_event.is_set() or self.status in ["paused", "cancelled"]:
                 return
             self._finalized = True
             self.status = "completed"

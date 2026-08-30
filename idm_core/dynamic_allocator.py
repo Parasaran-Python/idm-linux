@@ -66,11 +66,14 @@ class DynamicAllocator:
         self,
         total_bytes: int = 0,
         num_connections: int = 8,
-        min_split_size: int = 1048576,  # 1 MB default
+        min_split_size: int = 2097152,  # 2 MB minimum remaining to split
+        max_segments: int = 16,
         saved_segments: Optional[List[dict]] = None
     ):
         self.total_bytes = total_bytes
+        self.num_connections = num_connections
         self.min_split_size = min_split_size
+        self.max_segments = max_segments or max(num_connections, 16)
         self._segments: Dict[int, Segment] = {}
         self._lock = threading.RLock()
 
@@ -118,12 +121,15 @@ class DynamicAllocator:
             self._segments.clear()
             for s in saved_segments:
                 idx = s.get("index", s.get("segment_index", 0))
+                status = s.get("status", "queued")
+                if status == "downloading":
+                    status = "queued"
                 self._segments[idx] = Segment(
                     index=idx,
                     start_byte=s["start_byte"],
                     current_byte=s.get("current_byte", s["start_byte"]),
                     end_byte=s["end_byte"],
-                    status=s.get("status", "queued"),
+                    status=status,
                     temp_path=s.get("temp_path", "")
                 )
 
@@ -134,6 +140,9 @@ class DynamicAllocator:
         """
         threshold = min_split_size if min_split_size is not None else self.min_split_size
         with self._lock:
+            if len(self._segments) >= self.max_segments:
+                return None
+
             candidate_idx = None
             max_remaining = 0
 
