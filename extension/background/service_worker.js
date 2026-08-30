@@ -1,5 +1,6 @@
 /**
- * IDM Linux - Background Service Worker (Native Messaging & Download Dispatcher)
+ * IDM Linux - Background Service Worker / Script
+ * Intercepts downloads across all browsers (Firefox & Chrome) and provides Native Messaging Bridge.
  */
 
 const NATIVE_HOST = "com.idm.linux.native_host";
@@ -30,7 +31,7 @@ chrome.storage.local.get(["idmSettings"], (res) => {
  * Send request to IDM Native Messaging Host
  */
 function sendNativeMessage(payload) {
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve) => {
     try {
       chrome.runtime.sendNativeMessage(NATIVE_HOST, payload, (response) => {
         if (chrome.runtime.lastError) {
@@ -51,92 +52,127 @@ function sendNativeMessage(payload) {
  * Context Menus Setup
  */
 chrome.runtime.onInstalled.addListener(() => {
-  chrome.contextMenus.create({
-    id: "idm_download_link",
-    title: "Download with IDM",
-    contexts: ["link", "image", "video", "audio"]
-  });
+  if (chrome.contextMenus) {
+    chrome.contextMenus.create({
+      id: "idm_download_link",
+      title: "Download with IDM",
+      contexts: ["link", "image", "video", "audio"]
+    });
 
-  chrome.contextMenus.create({
-    id: "idm_download_all",
-    title: "Download all links with IDM",
-    contexts: ["page", "selection"]
-  });
-});
-
-chrome.contextMenus.onClicked.addListener((info, tab) => {
-  if (info.menuItemId === "idm_download_link") {
-    const targetUrl = info.linkUrl || info.srcUrl || info.pageUrl;
-    if (targetUrl) {
-      sendNativeMessage({
-        action: "add_download",
-        url: targetUrl,
-        headers: {
-          "Referer": tab ? tab.url : "",
-          "User-Agent": navigator.userAgent
-        },
-        start_immediately: true
-      });
-    }
-  } else if (info.menuItemId === "idm_download_all") {
-    if (tab && tab.id) {
-      chrome.tabs.sendMessage(tab.id, { action: "extract_all_links" }, (response) => {
-        if (response && response.links && response.links.length > 0) {
-          for (const link of response.links) {
-            sendNativeMessage({
-              action: "add_download",
-              url: link.url,
-              filename: link.text || null,
-              headers: { "Referer": tab.url },
-              start_immediately: false
-            });
-          }
-        }
-      });
-    }
+    chrome.contextMenus.create({
+      id: "idm_download_all",
+      title: "Download all links with IDM",
+      contexts: ["page", "selection"]
+    });
   }
 });
 
+if (chrome.contextMenus && chrome.contextMenus.onClicked) {
+  chrome.contextMenus.onClicked.addListener((info, tab) => {
+    if (info.menuItemId === "idm_download_link") {
+      const targetUrl = info.linkUrl || info.srcUrl || info.pageUrl;
+      if (targetUrl) {
+        sendNativeMessage({
+          action: "add_download",
+          url: targetUrl,
+          headers: {
+            "Referer": tab ? tab.url : "",
+            "User-Agent": navigator.userAgent
+          },
+          start_immediately: true
+        });
+      }
+    } else if (info.menuItemId === "idm_download_all") {
+      if (tab && tab.id) {
+        chrome.tabs.sendMessage(tab.id, { action: "extract_all_links" }, (response) => {
+          if (response && response.links && response.links.length > 0) {
+            for (const link of response.links) {
+              sendNativeMessage({
+                action: "add_download",
+                url: link.url,
+                filename: link.text || null,
+                headers: { "Referer": tab.url },
+                start_immediately: false
+              });
+            }
+          }
+        });
+      }
+    }
+  });
+}
+
 /**
- * Intercept standard browser downloads
+ * Universal Browser Download Interception (Firefox + Chrome/Edge/Brave)
  */
+const interceptedDownloadIds = new Set();
+
+function handleDownloadIntercept(downloadItem) {
+  if (!settings.interceptDownloads || !downloadItem || !downloadItem.url) {
+    return;
+  }
+
+  // Avoid recursive loops
+  if (interceptedDownloadIds.has(downloadItem.id)) {
+    return;
+  }
+
+  const rawFilename = downloadItem.filename || "";
+  const filename = rawFilename.split(/[/\\]/).pop() || "";
+  const ext = filename.split(".").pop().toLowerCase();
+
+  // If extension is in ignore list, skip
+  if (ext && settings.ignoreExtensions.includes(ext)) {
+    return;
+  }
+
+  // Intercept if matches configured extensions or binary MIME types or explicit download
+  const mime = downloadItem.mime || "";
+  const isTargetExt = settings.interceptExtensions.includes(ext);
+  const isBinaryMime = mime.startsWith("video/") || mime.startsWith("audio/") ||
+                       mime.includes("zip") || mime.includes("octet-stream") ||
+                       mime.includes("pdf") || mime.includes("tar") || mime.includes("gzip");
+
+  const shouldIntercept = isTargetExt || isBinaryMime || !ext || filename.length === 0;
+
+  if (shouldIntercept) {
+    interceptedDownloadIds.add(downloadItem.id);
+
+    // Cancel native browser download
+    if (chrome.downloads && chrome.downloads.cancel) {
+      chrome.downloads.cancel(downloadItem.id, () => {
+        if (chrome.downloads.erase) {
+          chrome.downloads.erase({ id: downloadItem.id });
+        }
+      });
+    }
+
+    // Forward immediately to IDM Linux native app
+    sendNativeMessage({
+      action: "add_download",
+      url: downloadItem.url,
+      filename: filename || null,
+      total_bytes: downloadItem.fileSize > 0 ? downloadItem.fileSize : (downloadItem.totalBytes > 0 ? downloadItem.totalBytes : 0),
+      headers: {
+        "Referer": downloadItem.referrer || downloadItem.url,
+        "User-Agent": navigator.userAgent
+      },
+      start_immediately: true
+    });
+  }
+}
+
+// 1. Firefox & Chrome: onCreated download listener
+if (chrome.downloads && chrome.downloads.onCreated) {
+  chrome.downloads.onCreated.addListener((downloadItem) => {
+    handleDownloadIntercept(downloadItem);
+  });
+}
+
+// 2. Chrome / Edge / Brave: onDeterminingFilename listener
 if (chrome.downloads && chrome.downloads.onDeterminingFilename) {
   chrome.downloads.onDeterminingFilename.addListener((downloadItem, suggest) => {
-    if (!settings.interceptDownloads) {
-      return;
-    }
-
-    const filename = downloadItem.filename || "";
-    const ext = filename.split(".").pop().toLowerCase();
-
-    // Check if extension is in intercept list
-    const shouldIntercept = settings.interceptExtensions.includes(ext) ||
-      (downloadItem.mime && (
-        downloadItem.mime.startsWith("video/") ||
-        downloadItem.mime.startsWith("audio/") ||
-        downloadItem.mime.includes("zip") ||
-        downloadItem.mime.includes("octet-stream")
-      ));
-
-    if (shouldIntercept && !settings.ignoreExtensions.includes(ext)) {
-      // Cancel native browser download
-      chrome.downloads.cancel(downloadItem.id, () => {
-        chrome.downloads.erase({ id: downloadItem.id });
-      });
-
-      // Forward to IDM Native Messaging
-      sendNativeMessage({
-        action: "add_download",
-        url: downloadItem.url,
-        filename: filename,
-        total_bytes: downloadItem.fileSize > 0 ? downloadItem.fileSize : 0,
-        headers: {
-          "Referer": downloadItem.referrer || "",
-          "User-Agent": navigator.userAgent
-        },
-        start_immediately: true
-      });
-    }
+    handleDownloadIntercept(downloadItem);
   });
 }
 
@@ -160,7 +196,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       url: request.url,
       filename: request.filename,
       headers: {
-        "Referer": sender.tab ? sender.tab.url : "",
+        "Referer": sender.tab ? sender.tab.url : window.location ? window.location.href : "",
         "User-Agent": navigator.userAgent
       },
       start_immediately: true
