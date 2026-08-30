@@ -1,20 +1,40 @@
 /**
- * IDM Linux - Universal Floating Video Grabber & Stream Sniffer
- * Works across YouTube, Vimeo, Dailymotion, Reddit, Twitter/X, Twitch, Facebook, and any HTML5 video player.
+ * IDM Linux - Classic Floating Video Grabber & Sniffer
+ * Renders the iconic Windows IDM "Download this video" button above players.
  */
 
 (function () {
   "use strict";
 
-  const sniffedStreams = new Set();
-  let floatingPanel = null;
-  let activeVideoEl = null;
+  // Prevent multiple injections
+  if (window.__idm_sniffer_injected) return;
+  window.__idm_sniffer_injected = true;
+
+  const capturedStreams = new Map(); // url -> { title, format, type }
+  let floatingBar = null;
+  let activePlayerEl = null;
 
   /**
-   * Helper to clean video title
+   * Inject Main-World Page Hook Script
    */
-  function getVideoTitle() {
-    const ytTitle = document.querySelector("h1.ytd-watch-metadata, #title h1, h1.title");
+  function injectPageHook() {
+    try {
+      const script = document.createElement("script");
+      script.src = chrome.runtime.getURL("content/page_hook.js");
+      script.onload = function () {
+        this.remove();
+      };
+      (document.head || document.documentElement).appendChild(script);
+    } catch (e) {}
+  }
+
+  injectPageHook();
+
+  /**
+   * Helper to extract clean page/video title
+   */
+  function getMediaTitle() {
+    const ytTitle = document.querySelector("h1.ytd-watch-metadata, #title h1, h1.title, .video-title");
     if (ytTitle && ytTitle.innerText.trim()) {
       return ytTitle.innerText.trim().replace(/[\\/:*?"<>|]/g, "_");
     }
@@ -24,225 +44,204 @@
   }
 
   /**
-   * Initialize or retrieve the floating IDM panel
+   * Create the iconic IDM Floating Download Banner
    */
-  function ensureFloatingPanel() {
-    if (floatingPanel && document.contains(floatingPanel)) {
-      return floatingPanel;
+  function createFloatingDownloadBar() {
+    if (floatingBar && document.contains(floatingBar)) {
+      return floatingBar;
     }
 
-    const panel = document.createElement("div");
-    panel.id = "idm-universal-video-panel";
-    panel.className = "idm-universal-video-panel";
+    const container = document.createElement("div");
+    container.id = "idm-floating-grabber-root";
+    container.className = "idm-floating-grabber-root";
 
-    const btn = document.createElement("button");
-    btn.className = "idm-video-grabber-btn";
-    btn.innerHTML = `
-      <svg class="idm-grabber-icon" viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
-        <path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM17 13l-5 5-5-5h3V9h4v4h3z"/>
-      </svg>
-      <span class="idm-grabber-text">Download this video</span>
+    const button = document.createElement("div");
+    button.className = "idm-grabber-button";
+    button.innerHTML = `
+      <div class="idm-grabber-icon-box">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+          <path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM17 13l-5 5-5-5h3V9h4v4h3z"/>
+        </svg>
+      </div>
+      <span class="idm-grabber-label">Download this video</span>
+      <span class="idm-grabber-arrow">▼</span>
     `;
 
-    const dropdown = document.createElement("div");
-    dropdown.className = "idm-grabber-dropdown";
+    const menu = document.createElement("div");
+    menu.className = "idm-grabber-menu";
 
-    function populateQualities() {
-      dropdown.innerHTML = "";
+    function populateMenu() {
+      menu.innerHTML = "";
       const currentUrl = window.location.href;
       const isYouTube = window.location.hostname.includes("youtube.com");
 
-      const options = isYouTube
+      // Default stream formats
+      const items = isYouTube
         ? [
             { label: "1080p 60fps (Full HD)", format: "MP4", url: currentUrl },
             { label: "720p HD", format: "MP4", url: currentUrl },
             { label: "480p SD", format: "MP4", url: currentUrl },
             { label: "360p Medium", format: "MP4", url: currentUrl },
-            { label: "Audio Only (128k MP3)", format: "MP3", url: currentUrl },
+            { label: "Audio Only (128k MP3)", format: "MP3", url: currentUrl }
           ]
         : [
-            { label: "Original Stream / Best Quality", format: "MP4", url: currentUrl },
+            { label: "Original Video (Direct Stream)", format: "MP4", url: currentUrl },
             { label: "720p HD", format: "MP4", url: currentUrl },
             { label: "480p SD", format: "MP4", url: currentUrl },
-            { label: "Audio Track (MP3)", format: "MP3", url: currentUrl },
+            { label: "Audio Track (MP3)", format: "MP3", url: currentUrl }
           ];
 
-      // Add any dynamically sniffed stream URLs
-      if (sniffedStreams.size > 0) {
-        sniffedStreams.forEach((streamUrl) => {
-          let label = "Stream (.m3u8 / .mp4)";
-          if (streamUrl.includes(".m3u8")) label = "HLS Stream (Adaptive .m3u8)";
-          else if (streamUrl.includes(".mpd")) label = "DASH Stream (.mpd)";
-          else if (streamUrl.includes(".mp4")) label = "Direct MP4 Video Stream";
-          options.unshift({ label: label, format: "MP4", url: streamUrl });
+      // Add sniffed media streams
+      if (capturedStreams.size > 0) {
+        capturedStreams.forEach((meta, streamUrl) => {
+          let label = meta.format || "Media Stream";
+          if (streamUrl.includes(".m3u8")) label = "HLS Video Stream (.m3u8)";
+          else if (streamUrl.includes(".mpd")) label = "DASH Video Stream (.mpd)";
+          else if (streamUrl.includes(".mp4")) label = "Direct MP4 Stream";
+          else if (streamUrl.includes(".webm")) label = "WebM Stream";
+          items.unshift({ label: label, format: "MP4", url: streamUrl });
         });
       }
 
-      options.forEach((opt) => {
-        const item = document.createElement("div");
-        item.className = "idm-grabber-item";
-        item.innerHTML = `
-          <span class="idm-item-title">${opt.label}</span>
-          <span class="idm-item-tag">${opt.format}</span>
+      items.forEach((item) => {
+        const row = document.createElement("div");
+        row.className = "idm-grabber-menu-item";
+        row.innerHTML = `
+          <span class="idm-menu-item-text">${item.label}</span>
+          <span class="idm-menu-item-badge">${item.format}</span>
         `;
-        item.addEventListener("click", (e) => {
+        row.addEventListener("click", (e) => {
           e.stopPropagation();
           e.preventDefault();
-          dropdown.classList.remove("idm-show");
+          menu.classList.remove("idm-menu-open");
 
-          const title = getVideoTitle();
-          const filename = `${title}.${opt.format.toLowerCase()}`;
+          const title = getMediaTitle();
+          const filename = `${title}.${item.format.toLowerCase()}`;
 
           chrome.runtime.sendMessage({
             action: "download_media",
-            url: opt.url,
+            url: item.url,
             filename: filename,
-            format: opt.format.toLowerCase()
+            format: item.format.toLowerCase()
           });
         });
-        dropdown.appendChild(item);
+        menu.appendChild(row);
       });
     }
 
-    btn.addEventListener("click", (e) => {
+    button.addEventListener("click", (e) => {
       e.stopPropagation();
       e.preventDefault();
-      populateQualities();
-      dropdown.classList.toggle("idm-show");
+      populateMenu();
+      menu.classList.toggle("idm-menu-open");
     });
 
     document.addEventListener("click", (e) => {
-      if (!panel.contains(e.target)) {
-        dropdown.classList.remove("idm-show");
+      if (!container.contains(e.target)) {
+        menu.classList.remove("idm-menu-open");
       }
     });
 
-    panel.appendChild(btn);
-    panel.appendChild(dropdown);
+    container.appendChild(button);
+    container.appendChild(menu);
 
-    // Attach to root so it can never be clipped by overflow:hidden
-    (document.fullscreenElement || document.body || document.documentElement).appendChild(panel);
-    floatingPanel = panel;
-    return panel;
+    (document.fullscreenElement || document.body || document.documentElement).appendChild(container);
+    floatingBar = container;
+    return container;
   }
 
   /**
-   * Position panel directly above the active video player
+   * Position the floating bar over the active video element
    */
-  function updatePosition() {
-    const video = activeVideoEl || document.querySelector("video");
-    if (!video) {
-      if (window.location.hostname.includes("youtube.com")) {
-        const panel = ensureFloatingPanel();
-        panel.style.display = "block";
-        panel.style.top = "70px";
-        panel.style.right = "24px";
-      } else if (floatingPanel) {
-        floatingPanel.style.display = "none";
-      }
+  function repositionBar() {
+    const video = activePlayerEl || document.querySelector("video, audio, #movie_player, .html5-video-player");
+    const isVideoSite =
+      window.location.hostname.includes("youtube.com") ||
+      window.location.hostname.includes("vimeo.com") ||
+      window.location.hostname.includes("dailymotion.com") ||
+      window.location.hostname.includes("twitch.tv") ||
+      window.location.hostname.includes("twitter.com") ||
+      window.location.hostname.includes("x.com");
+
+    if (!video && !isVideoSite && capturedStreams.size === 0) {
+      if (floatingBar) floatingBar.style.display = "none";
       return;
     }
 
-    const panel = ensureFloatingPanel();
-    const rect = video.getBoundingClientRect();
+    const bar = createFloatingDownloadBar();
+    bar.style.display = "block";
 
-    if (rect.width > 80 && rect.height > 50 && rect.bottom > 0 && rect.top < window.innerHeight) {
-      panel.style.display = "block";
-      const topPos = Math.max(12, rect.top + 12);
-      const rightPos = Math.max(16, (window.innerWidth - rect.right) + 16);
-      panel.style.top = `${topPos}px`;
-      panel.style.right = `${rightPos}px`;
-    } else {
-      // Fallback fixed position if player is on screen or video is playing
-      panel.style.display = "block";
-      panel.style.top = "70px";
-      panel.style.right = "24px";
+    if (video && video.getBoundingClientRect) {
+      const rect = video.getBoundingClientRect();
+      if (rect.width > 60 && rect.height > 40 && rect.bottom > 0 && rect.top < window.innerHeight) {
+        bar.style.top = `${Math.max(14, rect.top + 14)}px`;
+        bar.style.right = `${Math.max(16, (window.innerWidth - rect.right) + 16)}px`;
+        return;
+      }
     }
+
+    // Default top-right position
+    bar.style.top = "70px";
+    bar.style.right = "24px";
   }
 
   /**
-   * Scan page and hook all video elements
+   * Scan page and hook player elements
    */
-  function scanAndHookVideos() {
-    const videos = document.querySelectorAll("video, audio");
-    if (videos.length > 0) {
-      activeVideoEl = videos[0];
-      videos.forEach((v) => {
-        if (!v.dataset.idmHooked) {
-          v.dataset.idmHooked = "true";
-          v.addEventListener("mouseenter", () => {
-            activeVideoEl = v;
-            updatePosition();
+  function scanMediaElements() {
+    const mediaEls = document.querySelectorAll("video, audio");
+    if (mediaEls.length > 0) {
+      activePlayerEl = mediaEls[0];
+      mediaEls.forEach((el) => {
+        if (!el.dataset.idmHooked) {
+          el.dataset.idmHooked = "true";
+          el.addEventListener("mouseenter", () => {
+            activePlayerEl = el;
+            repositionBar();
           });
-          v.addEventListener("play", () => {
-            activeVideoEl = v;
-            updatePosition();
+          el.addEventListener("play", () => {
+            activePlayerEl = el;
+            repositionBar();
           });
         }
       });
-      updatePosition();
+      repositionBar();
     } else if (window.location.hostname.includes("youtube.com")) {
-      updatePosition();
+      repositionBar();
     }
   }
 
-  // Network Sniffing for Media Streams
-  function setupSniffing() {
-    const originalOpen = XMLHttpRequest.prototype.open;
-    XMLHttpRequest.prototype.open = function (method, url) {
-      if (typeof url === "string") {
-        if (
-          url.includes(".m3u8") ||
-          url.includes(".mpd") ||
-          url.includes("videoplayback") ||
-          url.includes(".mp4") ||
-          url.includes(".webm")
-        ) {
-          sniffedStreams.add(url);
-          scanAndHookVideos();
-        }
-      }
-      return originalOpen.apply(this, arguments);
-    };
-
-    const originalFetch = window.fetch;
-    window.fetch = function (input, init) {
-      const url = typeof input === "string" ? input : input ? input.url : "";
-      if (
-        url && (
-          url.includes(".m3u8") ||
-          url.includes(".mpd") ||
-          url.includes("videoplayback") ||
-          url.includes(".mp4") ||
-          url.includes(".webm")
-        )
-      ) {
-        sniffedStreams.add(url);
-        scanAndHookVideos();
-      }
-      return originalFetch.apply(this, arguments);
-    };
-  }
-
-  // Initialize
-  setupSniffing();
-  scanAndHookVideos();
-
-  // Polling & Event Listeners
-  setInterval(scanAndHookVideos, 1200);
-  window.addEventListener("scroll", updatePosition, { passive: true });
-  window.addEventListener("resize", updatePosition, { passive: true });
-  document.addEventListener("fullscreenchange", () => {
-    if (floatingPanel) {
-      (document.fullscreenElement || document.body).appendChild(floatingPanel);
+  // 1. Listen to Page Hook Custom Events
+  document.addEventListener("__idm_media_event", (e) => {
+    if (e.detail && e.detail.url) {
+      capturedStreams.set(e.detail.url, { format: e.detail.type || "Stream" });
+      repositionBar();
     }
-    updatePosition();
   });
 
-  // YouTube SPA navigation
+  // 2. Listen to Background Network Sniffer Messages
+  chrome.runtime.onMessage.addListener((msg) => {
+    if (msg.action === "idm_media_detected" && msg.streamUrl) {
+      capturedStreams.set(msg.streamUrl, { format: msg.contentType || "Stream" });
+      repositionBar();
+    }
+  });
+
+  // 3. Initialize & Continuous Polling
+  scanMediaElements();
+  setInterval(scanMediaElements, 1200);
+  window.addEventListener("scroll", repositionBar, { passive: true });
+  window.addEventListener("resize", repositionBar, { passive: true });
+  document.addEventListener("fullscreenchange", () => {
+    if (floatingBar) {
+      (document.fullscreenElement || document.body).appendChild(floatingBar);
+    }
+    repositionBar();
+  });
+
   window.addEventListener("yt-navigate-finish", () => {
-    sniffedStreams.clear();
-    scanAndHookVideos();
+    capturedStreams.clear();
+    scanMediaElements();
   });
 
   // Extract all links

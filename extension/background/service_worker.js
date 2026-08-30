@@ -5,6 +5,9 @@
 
 const NATIVE_HOST = "com.idm.linux.native_host";
 
+// Per-tab detected media store
+const tabMediaMap = new Map();
+
 // Default settings
 let settings = {
   interceptDownloads: true,
@@ -45,6 +48,90 @@ function sendNativeMessage(payload) {
       console.error("[IDM Extension] Native messaging failed:", e);
       resolve({ status: "error", error: e.toString() });
     }
+  });
+}
+
+/**
+ * Listen for network media requests (HLS, DASH, MP4, WebM, audio)
+ */
+if (chrome.webRequest && chrome.webRequest.onHeadersReceived) {
+  chrome.webRequest.onHeadersReceived.addListener(
+    (details) => {
+      if (!settings.videoSniffer || details.tabId < 0) return;
+
+      const url = details.url || "";
+      const headers = details.responseHeaders || [];
+      let contentType = "";
+      let contentLength = 0;
+
+      for (const h of headers) {
+        const name = h.name.toLowerCase();
+        if (name === "content-type") {
+          contentType = (h.value || "").toLowerCase();
+        } else if (name === "content-length") {
+          contentLength = parseInt(h.value, 10) || 0;
+        }
+      }
+
+      const isMediaMime =
+        contentType.startsWith("video/") ||
+        contentType.startsWith("audio/") ||
+        contentType.includes("mpegurl") ||
+        contentType.includes("dash+xml");
+
+      const isMediaUrl =
+        url.includes(".m3u8") ||
+        url.includes(".mpd") ||
+        url.includes("videoplayback") ||
+        url.includes(".mp4") ||
+        url.includes(".webm") ||
+        url.includes(".ts") ||
+        url.includes(".m4s") ||
+        url.includes(".m4a") ||
+        url.includes(".mp3");
+
+      if (isMediaMime || isMediaUrl) {
+        if (!tabMediaMap.has(details.tabId)) {
+          tabMediaMap.set(details.tabId, new Set());
+        }
+        const mediaSet = tabMediaMap.get(details.tabId);
+        if (!mediaSet.has(url)) {
+          mediaSet.add(url);
+
+          // Update badge
+          const actionApi = chrome.action || chrome.browserAction;
+          if (actionApi && actionApi.setBadgeText) {
+            actionApi.setBadgeText({
+              text: String(mediaSet.size),
+              tabId: details.tabId
+            });
+            if (actionApi.setBadgeBackgroundColor) {
+              actionApi.setBadgeBackgroundColor({
+                color: "#2b6cb0",
+                tabId: details.tabId
+              });
+            }
+          }
+
+          // Notify content script in the active tab
+          chrome.tabs.sendMessage(details.tabId, {
+            action: "idm_media_detected",
+            streamUrl: url,
+            contentType: contentType,
+            size: contentLength
+          }).catch(() => {});
+        }
+      }
+    },
+    { urls: ["<all_urls>"] },
+    ["responseHeaders"]
+  );
+}
+
+// Clean up tab media cache on tab close
+if (chrome.tabs && chrome.tabs.onRemoved) {
+  chrome.tabs.onRemoved.addListener((tabId) => {
+    tabMediaMap.delete(tabId);
   });
 }
 
