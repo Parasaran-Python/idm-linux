@@ -53,6 +53,10 @@ class YTDLPDownloader:
         self._pause_event = threading.Event()
         self._lock = threading.RLock()
 
+    @property
+    def current_speed(self) -> float:
+        return self.speed
+
     @staticmethod
     def is_ytdlp_available() -> bool:
         return shutil.which("yt-dlp") is not None or shutil.which("youtube-dl") is not None

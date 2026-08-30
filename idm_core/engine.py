@@ -249,7 +249,7 @@ class DownloadEngine:
             if download_id in self.active_downloaders:
                 dl = self.active_downloaders[download_id]
                 rec["status"] = dl.status
-                rec["speed"] = int(dl.current_speed)
+                rec["speed"] = int(getattr(dl, "current_speed", getattr(dl, "speed", 0)))
                 rec["eta"] = getattr(dl, "eta", 0)
                 rec["downloaded_bytes"] = dl.allocator.get_total_downloaded() if getattr(dl, "allocator", None) else getattr(dl, "downloaded_bytes", 0)
                 rec["total_bytes"] = getattr(dl, "total_bytes", rec["total_bytes"])
@@ -273,7 +273,7 @@ class DownloadEngine:
             if dl_id in self.active_downloaders:
                 active = self.active_downloaders[dl_id]
                 dl["status"] = active.status
-                dl["speed"] = int(active.current_speed)
+                dl["speed"] = int(getattr(active, "current_speed", getattr(active, "speed", 0)))
                 dl["eta"] = getattr(active, "eta", 0)
                 dl["downloaded_bytes"] = active.allocator.get_total_downloaded() if getattr(active, "allocator", None) else getattr(active, "downloaded_bytes", 0)
         return downloads

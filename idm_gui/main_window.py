@@ -273,6 +273,7 @@ class MainWindow(QMainWindow):
                     headers=headers,
                     start_immediately=start_imm
                 )
+                self.refresh_downloads()
                 if start_imm and dl_id:
                     self._show_progress_dialog(dl_id)
                 self.refresh_downloads()
@@ -320,6 +321,15 @@ class MainWindow(QMainWindow):
         self.status_speed_label.setText(f"Transfer Speed: {format_speed(active_speed)}")
         free_space = self.engine.storage.get_free_space()
         self.status_disk_label.setText(f"Free Disk: {format_bytes(free_space)}")
+
+        # Synchronize all active progress windows
+        for did, dlg in list(self.progress_dialogs.items()):
+            if dlg.isVisible():
+                info = self.engine.get_download_info(did)
+                if info:
+                    dlg.update_progress(info)
+                    if info.get("segments"):
+                        dlg.update_segments(info["segments"])
 
     def open_add_url_dialog(self, default_url: str = ""):
         # Check clipboard for valid URL
