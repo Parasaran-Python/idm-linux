@@ -10,3 +10,5 @@ build/
 *.merging
 *.part
 temp/
+.playwright-mcp/
+scripts/idm-native-host-wrapper.sh
