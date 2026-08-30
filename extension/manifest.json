@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "IDM Linux Integration Module",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Internet Download Manager (IDM) integration for Linux. Automatically intercepts downloads and provides video sniffer download panel.",
   "permissions": [
     "downloads",
