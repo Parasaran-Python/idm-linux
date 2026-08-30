@@ -17,6 +17,12 @@
     "http://localhost/*",
     "http://127.0.0.1/*"
   ],
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "idm-linux@idm-linux.local",
+      "strict_min_version": "109.0"
+    }
+  },
   "background": {
     "service_worker": "background/service_worker.js"
   },
