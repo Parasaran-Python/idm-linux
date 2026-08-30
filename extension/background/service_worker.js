@@ -236,6 +236,7 @@ async function handleDownloadIntercept(downloadItem) {
   if (interceptedDownloadIds.has(downloadItem.id)) {
     return;
   }
+  interceptedDownloadIds.add(downloadItem.id);
 
   const rawFilename = downloadItem.filename || "";
   const filename = rawFilename.split(/[/\\]/).pop() || "";
@@ -256,8 +257,6 @@ async function handleDownloadIntercept(downloadItem) {
   const shouldIntercept = isTargetExt || isBinaryMime || !ext || filename.length === 0;
 
   if (shouldIntercept) {
-    interceptedDownloadIds.add(downloadItem.id);
-
     // Cancel native browser download
     if (chrome.downloads && chrome.downloads.cancel) {
       chrome.downloads.cancel(downloadItem.id, () => {
