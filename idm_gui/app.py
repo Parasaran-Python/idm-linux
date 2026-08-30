@@ -76,6 +76,7 @@ def main():
 
     # 2. Launch Main Qt Application
     app = QApplication(sys.argv)
+    app.setQuitOnLastWindowClosed(False)
     app.setStyle("Fusion")
     app.setApplicationName("IDM Linux")
     app.setOrganizationName("IDM Linux Team")

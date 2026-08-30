@@ -34,6 +34,7 @@ class DownloadInfoDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle("Download File Info")
         self.setWindowFlags(Qt.WindowType.Window)
+        self.setAttribute(Qt.WidgetAttribute.WA_QuitOnClose, False)
         self.setMinimumWidth(560)
         self.start_immediately = True
 
