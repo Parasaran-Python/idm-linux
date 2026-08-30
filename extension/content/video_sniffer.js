@@ -20,12 +20,14 @@
 
   function fetchFormatsForCurrentPage() {
     const currentUrl = window.location.href;
-    if (cachedFormatsForUrl.has(currentUrl)) return;
+    if (cachedFormatsForUrl.has(currentUrl) && cachedFormatsForUrl.get(currentUrl).__fromBackend) return;
 
     try {
       chrome.runtime.sendMessage({ action: "query_media_formats", url: currentUrl }, (response) => {
         if (response && response.formats && response.formats.length > 0) {
-          cachedFormatsForUrl.set(currentUrl, response.formats);
+          const fmts = response.formats;
+          fmts.__fromBackend = true;
+          cachedFormatsForUrl.set(currentUrl, fmts);
           if (floatingBar) {
             const openMenu = floatingBar.querySelector(".idm-grabber-menu.idm-menu-open");
             if (openMenu) {
@@ -451,11 +453,15 @@
   });
 
   document.addEventListener("__idm_discovered_formats", (e) => {
-    if (e.detail && e.detail.formats && e.detail.formats.length > 0) {
-      cachedFormatsForUrl.set(e.detail.url, e.detail.formats);
-      if (floatingBar) {
-        const populateFunc = floatingBar.__idmPopulateMenu;
-        if (populateFunc) populateFunc();
+    const url = e.detail ? e.detail.url : "";
+    if (url && e.detail.formats && e.detail.formats.length > 0) {
+      const existing = cachedFormatsForUrl.get(url);
+      if (!existing || !existing.__fromBackend) {
+        cachedFormatsForUrl.set(url, e.detail.formats);
+        if (floatingBar) {
+          const populateFunc = floatingBar.__idmPopulateMenu;
+          if (populateFunc) populateFunc();
+        }
       }
     }
   });
@@ -498,6 +504,12 @@
     userDismissed = false;
     customPosition = null;
     capturedStreams.clear();
+    fetchFormatsForCurrentPage();
+    scanMediaElements();
+  });
+
+  window.addEventListener("popstate", () => {
+    fetchFormatsForCurrentPage();
     scanMediaElements();
   });
 

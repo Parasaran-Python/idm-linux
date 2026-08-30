@@ -130,7 +130,7 @@
               height: f.height,
               quality: String(f.height),
               format: "MP4",
-              filesize: parseInt(f.contentLength || 0, 10),
+              filesize: 0,
               url: currentUrl
             });
           }
