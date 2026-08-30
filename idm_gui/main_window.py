@@ -373,6 +373,7 @@ class MainWindow(QMainWindow):
     def _resume_selected(self):
         for dl_id in self.table.get_selected_download_ids():
             self.engine.resume_download(dl_id)
+            self._show_progress_dialog(dl_id)
         self.refresh_downloads()
 
     def _pause_selected(self):
@@ -400,13 +401,16 @@ class MainWindow(QMainWindow):
     def _on_table_action(self, action: str, download_id: str):
         if action == "resume":
             self.engine.resume_download(download_id)
+            self._show_progress_dialog(download_id)
         elif action == "pause":
             self.engine.pause_download(download_id)
         elif action == "redownload":
             dl = self.engine.get_download_info(download_id)
             if dl:
                 self.engine.delete_download(download_id)
-                self.engine.add_download(url=dl["url"], filename=dl["filename"], save_path=dl["save_path"])
+                new_id = self.engine.add_download(url=dl["url"], filename=dl["filename"], save_path=dl["save_path"])
+                if new_id:
+                    self._show_progress_dialog(new_id)
         elif action == "delete":
             self._delete_selected(delete_files_default=False)
         elif action == "delete_file":
@@ -423,9 +427,9 @@ class MainWindow(QMainWindow):
                 return
 
             if download_id not in self.progress_dialogs or not self.progress_dialogs[download_id].isVisible():
-                parent_widget = self if (self.isVisible() and self.windowHandle() is not None) else None
-                dlg = DownloadProgressDialog(download_id, dl.get("filename", "Download"), save_path=dl.get("save_path", ""), parent=parent_widget)
+                dlg = DownloadProgressDialog(download_id, dl.get("filename", "Download"), save_path=dl.get("save_path", ""), parent=None)
                 dlg.setWindowFlags(Qt.WindowType.Window)
+                dlg.setAttribute(Qt.WidgetAttribute.WA_QuitOnClose, False)
                 dlg.pause_requested.connect(self.engine.pause_download)
                 dlg.resume_requested.connect(self.engine.resume_download)
                 dlg.cancel_requested.connect(lambda did: self.engine.delete_download(did, delete_files=True))
