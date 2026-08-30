@@ -78,8 +78,10 @@ def main():
     app = QApplication(sys.argv)
     app.setQuitOnLastWindowClosed(False)
     app.setStyle("Fusion")
-    app.setApplicationName("IDM Linux")
+    app.setApplicationName("idm-linux")
+    app.setApplicationDisplayName("IDM Linux")
     app.setOrganizationName("IDM Linux Team")
+    app.setDesktopFileName("idm-linux.desktop")
     app.setWindowIcon(create_app_icon())
     app.setStyleSheet(IDM_DARK_THEME)
 
