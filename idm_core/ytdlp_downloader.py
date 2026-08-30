@@ -116,84 +116,95 @@ class YTDLPDownloader:
                 return []
 
             data = json.loads(res.stdout)
-            formats = data.get("formats", [])
-            duration = data.get("duration") or 0
-            tier_map = {}
-            has_audio = False
-            best_audio_sz = 0
-
-            # Find best audio stream size
-            for f in formats:
-                if f.get("vcodec") == "none" and f.get("acodec") != "none":
-                    has_audio = True
-                    sz = f.get("filesize") or f.get("filesize_approx") or 0
-                    tbr = f.get("tbr") or f.get("abr") or 0
-                    if not sz and tbr and duration:
-                        sz = int((tbr * 1000 / 8) * duration)
-                    if sz > best_audio_sz:
-                        best_audio_sz = sz
-
-            for f in formats:
-                h = f.get("height")
-                vcodec = f.get("vcodec", "none")
-                acodec = f.get("acodec", "none")
-                if acodec != "none":
-                    has_audio = True
-
-                if h and vcodec != "none" and h > 0:
-                    fps = f.get("fps") or 30
-                    filesize = f.get("filesize") or f.get("filesize_approx") or 0
-                    tbr = f.get("tbr") or f.get("vbr") or 0
-                    if not filesize and tbr and duration:
-                        filesize = int((tbr * 1000 / 8) * duration)
-                    # Add audio stream size if separate
-                    if acodec == "none" and best_audio_sz > 0:
-                        filesize += best_audio_sz
-
-                    if h not in tier_map or (fps > tier_map[h]["fps"]) or (fps == tier_map[h]["fps"] and tbr > tier_map[h]["tbr"]):
-                        label = f"{h}p"
-                        if fps and fps > 30:
-                            label += f" {int(fps)}fps"
-                        if h >= 4320:
-                            label += " (8K Ultra HD)"
-                        elif h >= 2160:
-                            label += " (4K Ultra HD)"
-                        elif h >= 1440:
-                            label += " (2K Quad HD)"
-                        elif h >= 1080:
-                            label += " (Full HD)"
-                        elif h >= 720:
-                            label += " (HD)"
-                        else:
-                            label += " (SD)"
-
-                        tier_map[h] = {
-                            "label": label,
-                            "height": h,
-                            "fps": fps,
-                            "tbr": tbr,
-                            "quality": str(h),
-                            "format": "MP4",
-                            "filesize": filesize,
-                            "url": url
-                        }
-
-            video_formats = list(tier_map.values())
-            video_formats.sort(key=lambda x: x["height"], reverse=True)
-
-            if has_audio:
-                video_formats.append({
-                    "label": "Audio Only (MP3)",
-                    "height": 0,
-                    "quality": "audio",
-                    "format": "MP3",
-                    "filesize": best_audio_sz,
-                    "url": url
-                })
-
-            return video_formats
+            return cls._parse_formats_and_tiers(data, url)
         except Exception:
             return []
+
+    @classmethod
+    def _parse_formats_and_tiers(cls, data: Dict[str, Any], url: str) -> List[Dict[str, Any]]:
+        """Unified parser ensuring 100% identical format definitions and file sizes across dropdown and dialogs."""
+        formats = data.get("formats", [])
+        duration = data.get("duration") or 0
+        tier_map = {}
+        has_audio = False
+        best_audio_sz = 0
+
+        def get_format_size(f):
+            sz = f.get("filesize") or f.get("filesize_approx") or 0
+            tbr = f.get("tbr") or f.get("vbr") or f.get("abr") or 0
+            if not sz and tbr and duration:
+                sz = int((tbr * 1000 / 8) * duration)
+            return sz
+
+        # 1. Best audio stream matching yt-dlp
+        for f in formats:
+            if f.get("vcodec") == "none" and f.get("acodec") != "none":
+                has_audio = True
+                sz = get_format_size(f)
+                if sz > best_audio_sz:
+                    best_audio_sz = sz
+
+        # 2. Select standard video format matching yt-dlp format selection
+        for f in formats:
+            h = f.get("height")
+            vcodec = f.get("vcodec", "none")
+            acodec = f.get("acodec", "none")
+            if acodec != "none":
+                has_audio = True
+
+            if h and vcodec != "none" and h > 0:
+                fps = f.get("fps") or 30
+                raw_sz = get_format_size(f)
+                tbr = f.get("tbr") or f.get("vbr") or 0
+                total_sz = raw_sz + (best_audio_sz if acodec == "none" else 0)
+
+                # Standard format preference: higher fps, then higher quality
+                if h not in tier_map or (fps > tier_map[h]["fps"]) or (fps == tier_map[h]["fps"] and raw_sz > tier_map[h]["raw_sz"]):
+                    label = f"{h}p"
+                    if fps and fps > 30:
+                        label += f" {int(fps)}fps"
+                    if h >= 4320:
+                        label += " (8K Ultra HD)"
+                    elif h >= 2160:
+                        label += " (4K Ultra HD)"
+                    elif h >= 1440:
+                        label += " (2K Quad HD)"
+                    elif h >= 1080:
+                        label += " (Full HD)"
+                    elif h >= 720:
+                        label += " (HD)"
+                    else:
+                        label += " (SD)"
+
+                    tier_map[h] = {
+                        "label": label,
+                        "height": h,
+                        "fps": fps,
+                        "tbr": tbr,
+                        "quality": str(h),
+                        "format": "MP4",
+                        "raw_sz": raw_sz,
+                        "filesize": total_sz,
+                        "url": url
+                    }
+
+        video_formats = list(tier_map.values())
+        video_formats.sort(key=lambda x: x["height"], reverse=True)
+
+        if has_audio:
+            video_formats.append({
+                "label": "Audio Only (MP3)",
+                "height": 0,
+                "fps": 0,
+                "tbr": 0,
+                "quality": "audio",
+                "format": "MP3",
+                "raw_sz": best_audio_sz,
+                "filesize": best_audio_sz,
+                "url": url
+            })
+
+        return video_formats
 
     @classmethod
     def probe_media_info(cls, url: str, quality: Optional[str] = None) -> Dict[str, Any]:
@@ -224,48 +235,28 @@ class YTDLPDownloader:
             clean_title = re.sub(r'[\\/:*?"<>|]', '_', raw_title).strip()
             ext = data.get("ext") or "mp4"
             duration = data.get("duration") or 0
-            formats = data.get("formats", [])
 
-            # Calculate best audio stream size
-            best_audio_sz = 0
-            for f in formats:
-                if f.get("vcodec") == "none" and f.get("acodec") != "none":
-                    sz = f.get("filesize") or f.get("filesize_approx") or 0
-                    tbr = f.get("tbr") or f.get("abr") or 0
-                    if not sz and tbr and duration:
-                        sz = int((tbr * 1000 / 8) * duration)
-                    if sz > best_audio_sz:
-                        best_audio_sz = sz
+            tier_formats = cls._parse_formats_and_tiers(data, url)
+            chosen_size = 0
+            if quality:
+                q_str = str(quality).lower().strip()
+                for tf in tier_formats:
+                    if tf["quality"] == q_str:
+                        chosen_size = tf["filesize"]
+                        if q_str == "audio":
+                            ext = "mp3"
+                        break
 
-            target_height = int(quality) if quality and quality.isdigit() else 0
-            chosen_video_sz = 0
-            for f in formats:
-                h = f.get("height") or 0
-                vcodec = f.get("vcodec", "none")
-                if vcodec != "none" and h > 0:
-                    if target_height > 0 and h > target_height:
-                        continue
-                    sz = f.get("filesize") or f.get("filesize_approx") or 0
-                    tbr = f.get("tbr") or f.get("vbr") or 0
-                    if not sz and tbr and duration:
-                        sz = int((tbr * 1000 / 8) * duration)
-                    if sz > chosen_video_sz:
-                        chosen_video_sz = sz
-
-            if quality == "audio":
-                total_size = best_audio_sz
-                ext = "mp3"
-            elif chosen_video_sz > 0:
-                total_size = chosen_video_sz + best_audio_sz
-            else:
-                total_size = data.get("filesize") or data.get("filesize_approx") or 0
+            if chosen_size <= 0 and tier_formats:
+                chosen_size = tier_formats[0]["filesize"]
 
             filename = f"{clean_title}.{ext}" if clean_title else ""
             return {
                 "title": clean_title,
                 "filename": filename,
-                "filesize": total_size,
-                "duration": duration
+                "filesize": chosen_size,
+                "duration": duration,
+                "formats": tier_formats
             }
         except Exception:
             return {"title": "", "filename": "", "filesize": 0}
