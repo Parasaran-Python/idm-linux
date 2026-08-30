@@ -142,6 +142,7 @@ class DownloadEngine:
                     save_path=save_path,
                     config=self.config,
                     headers=headers,
+                    quality=headers.get("quality"),
                     on_progress=self._on_progress_callback,
                     on_complete=self._on_complete_callback,
                     on_error=self._on_error_callback,

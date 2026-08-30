@@ -313,11 +313,15 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     (async () => {
       const pageUrl = sender.tab ? sender.tab.url : (window.location ? window.location.href : "");
       const headers = await buildDownloadHeaders(request.url, pageUrl);
+      if (request.quality) {
+        headers["quality"] = request.quality;
+      }
       const res = await sendNativeMessage({
         action: "add_download",
         url: request.url,
         filename: request.filename,
         headers: headers,
+        quality: request.quality || null,
         start_immediately: true
       });
       sendResponse(res);
