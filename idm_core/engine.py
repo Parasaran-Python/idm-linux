@@ -207,8 +207,8 @@ class DownloadEngine:
         for dl_id in ids:
             self.pause_download(dl_id)
 
-    def delete_download(self, download_id: str, delete_files: bool = False) -> bool:
-        """Remove download from queue/history and optionally delete from disk."""
+    def delete_download(self, download_id: str, delete_files: bool = False, move_to_trash: bool = True) -> bool:
+        """Remove download from queue/history and optionally delete/trash from disk."""
         with self._lock:
             if download_id in self.active_downloaders:
                 downloader = self.active_downloaders[download_id]
@@ -219,10 +219,13 @@ class DownloadEngine:
             if rec and delete_files:
                 path = rec.get("save_path")
                 if path and os.path.exists(path):
-                    try:
-                        os.remove(path)
-                    except Exception:
-                        pass
+                    if move_to_trash:
+                        self.storage.move_to_trash(path)
+                    else:
+                        try:
+                            os.remove(path)
+                        except Exception:
+                            pass
 
             self.storage.cleanup_temp(download_id)
             deleted = self.database.delete_download(download_id)

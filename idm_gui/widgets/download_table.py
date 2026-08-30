@@ -200,6 +200,16 @@ class DownloadTableWidget(QTableWidget):
         if not action:
             return
 
+        if action == delete_list_act:
+            self.action_requested.emit("delete", first_id)
+            return
+        elif action == delete_file_act:
+            self.action_requested.emit("delete_file", first_id)
+            return
+        elif action == props_act:
+            self.download_double_clicked.emit(first_id)
+            return
+
         for dl_id in selected_ids:
             if action == open_act:
                 dl = self._downloads_map.get(dl_id)
@@ -216,14 +226,8 @@ class DownloadTableWidget(QTableWidget):
                 self.action_requested.emit("pause", dl_id)
             elif action == redownload_act:
                 self.action_requested.emit("redownload", dl_id)
-            elif action == delete_list_act:
-                self.action_requested.emit("delete", dl_id)
-            elif action == delete_file_act:
-                self.action_requested.emit("delete_file", dl_id)
             elif action == copy_url_act:
                 dl = self._downloads_map.get(dl_id)
                 if dl:
                     from PyQt6.QtWidgets import QApplication
                     QApplication.clipboard().setText(dl.get("url", ""))
-            elif action == props_act:
-                self.download_double_clicked.emit(dl_id)

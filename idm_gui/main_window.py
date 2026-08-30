@@ -24,6 +24,7 @@ from PyQt6.QtWidgets import (
 from idm_core.config import Config
 from idm_core.engine import DownloadEngine
 from idm_gui.dialogs.batch_download_dialog import BatchDownloadDialog
+from idm_gui.dialogs.delete_dialog import DeleteConfirmDialog
 from idm_gui.dialogs.download_info_dialog import DownloadInfoDialog
 from idm_gui.dialogs.download_progress_dialog import DownloadProgressDialog
 from idm_gui.dialogs.options_dialog import OptionsDialog
@@ -325,19 +326,21 @@ class MainWindow(QMainWindow):
             self.engine.pause_download(dl_id)
         self.refresh_downloads()
 
-    def _delete_selected(self):
+    def _delete_selected(self, delete_files_default: bool = False):
         ids = self.table.get_selected_download_ids()
         if not ids:
             return
-        res = QMessageBox.question(
-            self,
-            "Confirm Delete",
-            f"Are you sure you want to remove {len(ids)} download(s) from the list?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
-        )
-        if res == QMessageBox.StandardButton.Yes:
+        
+        first_fn = ""
+        if len(ids) == 1:
+            dl = self.engine.get_download_info(ids[0])
+            first_fn = dl.get("filename", "") if dl else ""
+
+        dlg = DeleteConfirmDialog(count=len(ids), filename=first_fn, delete_files_default=delete_files_default, parent=self)
+        if dlg.exec():
+            delete_files = dlg.delete_files_from_disk()
             for dl_id in ids:
-                self.engine.delete_download(dl_id, delete_files=False)
+                self.engine.delete_download(dl_id, delete_files=delete_files, move_to_trash=True)
             self.refresh_downloads()
 
     def _on_table_action(self, action: str, download_id: str):
@@ -351,9 +354,9 @@ class MainWindow(QMainWindow):
                 self.engine.delete_download(download_id)
                 self.engine.add_download(url=dl["url"], filename=dl["filename"], save_path=dl["save_path"])
         elif action == "delete":
-            self.engine.delete_download(download_id, delete_files=False)
+            self._delete_selected(delete_files_default=False)
         elif action == "delete_file":
-            self.engine.delete_download(download_id, delete_files=True)
+            self._delete_selected(delete_files_default=True)
         self.refresh_downloads()
 
     def _on_download_double_clicked(self, download_id: str):
