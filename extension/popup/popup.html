@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>IDM Linux Integration</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="header">
+    <div class="logo-title">
+      <span class="logo-icon">⚡</span>
+      <span class="title">IDM Linux</span>
+    </div>
+    <span id="engine-badge" class="badge badge-disconnected">Checking...</span>
+  </div>
+
+  <div class="card">
+    <div class="setting-row">
+      <label for="toggle-intercept">Automatic Download Intercept</label>
+      <input type="checkbox" id="toggle-intercept" checked>
+    </div>
+    <div class="setting-row">
+      <label for="toggle-sniffer">Floating Video Sniffer</label>
+      <input type="checkbox" id="toggle-sniffer" checked>
+    </div>
+  </div>
+
+  <div class="actions">
+    <button id="btn-add-url" class="btn btn-primary">➕ Add URL to IDM</button>
+    <button id="btn-open-gui" class="btn btn-secondary">🖥 Open IDM App</button>
+  </div>
+
+  <div class="footer">
+    <span class="version">v1.0.0 (Native IPC Connected)</span>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
