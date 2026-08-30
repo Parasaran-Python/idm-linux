@@ -19,7 +19,7 @@ jobs:
         uses: actions/checkout@v7
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: '3.12'
 
@@ -52,13 +52,12 @@ jobs:
       # 3. Build AppDir & AppImage
       - name: Build AppImage
         run: |
-          ./scripts/build_appimage.sh
+          bash ./scripts/build_appimage.sh
           # Download appimagetool
           curl -L -o appimagetool https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage
           chmod +x appimagetool
-          sed -i 's|AI\x02|\x00\x00\x00|' appimagetool || true # allow running without FUSE on runner
           ./appimagetool --appimage-extract
-          ./squashfs-root/AppRun dist/AppDir dist/idm-linux-x86_64.AppImage || true
+          ARCH=x86_64 ./squashfs-root/AppRun dist/AppDir dist/idm-linux-x86_64.AppImage || true
 
       # 4. Build Chrome MV3 Extension ZIP
       - name: Package Chrome Extension (MV3)
@@ -77,7 +76,7 @@ jobs:
 
       # 6. Upload Artifacts for Workflow Run
       - name: Upload Build Artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: idm-linux-build-artifacts
           path: |
