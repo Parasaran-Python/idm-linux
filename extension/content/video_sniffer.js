@@ -103,17 +103,17 @@
       // Default stream formats
       const items = isYouTube
         ? [
-            { label: "1080p 60fps (Full HD)", format: "MP4", url: currentUrl },
-            { label: "720p HD", format: "MP4", url: currentUrl },
-            { label: "480p SD", format: "MP4", url: currentUrl },
-            { label: "360p Medium", format: "MP4", url: currentUrl },
-            { label: "Audio Only (128k MP3)", format: "MP3", url: currentUrl }
+            { label: "1080p 60fps (Full HD)", format: "MP4", quality: "1080", url: currentUrl },
+            { label: "720p HD", format: "MP4", quality: "720", url: currentUrl },
+            { label: "480p SD", format: "MP4", quality: "480", url: currentUrl },
+            { label: "360p Medium", format: "MP4", quality: "360", url: currentUrl },
+            { label: "Audio Only (128k MP3)", format: "MP3", quality: "audio", url: currentUrl }
           ]
         : [
-            { label: "Original Video (Direct Stream)", format: "MP4", url: currentUrl },
-            { label: "720p HD", format: "MP4", url: currentUrl },
-            { label: "480p SD", format: "MP4", url: currentUrl },
-            { label: "Audio Track (MP3)", format: "MP3", url: currentUrl }
+            { label: "Original Video (Direct Stream)", format: "MP4", quality: "1080", url: currentUrl },
+            { label: "720p HD", format: "MP4", quality: "720", url: currentUrl },
+            { label: "480p SD", format: "MP4", quality: "480", url: currentUrl },
+            { label: "Audio Track (MP3)", format: "MP3", quality: "audio", url: currentUrl }
           ];
 
       // Add sniffed media streams
@@ -124,7 +124,7 @@
           else if (streamUrl.includes(".mpd")) label = "DASH Video Stream (.mpd)";
           else if (streamUrl.includes(".mp4")) label = "Direct MP4 Stream";
           else if (streamUrl.includes(".webm")) label = "WebM Stream";
-          items.unshift({ label: label, format: "MP4", url: streamUrl });
+          items.unshift({ label: label, format: "MP4", quality: "1080", url: streamUrl });
         });
       }
 
@@ -147,6 +147,7 @@
             action: "download_media",
             url: item.url,
             filename: filename,
+            quality: item.quality,
             format: item.format.toLowerCase()
           });
         });

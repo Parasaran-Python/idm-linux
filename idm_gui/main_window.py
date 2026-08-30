@@ -380,6 +380,8 @@ class MainWindow(QMainWindow):
                 self.progress_dialogs[download_id] = dlg
                 dlg.update_progress(dl)
                 dlg.show()
+                dlg.raise_()
+                dlg.activateWindow()
             else:
                 self.progress_dialogs[download_id].show()
                 self.progress_dialogs[download_id].raise_()

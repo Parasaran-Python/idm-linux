@@ -1,5 +1,6 @@
 """
-Download File Info Interception and URL Input Dialog
+IDM Linux - Download File Info Dialog
+Classic IDM-style prompt for URL, Save Location, Category, File Size, and Download Now / Later actions.
 """
 
 import os
@@ -10,12 +11,14 @@ from PyQt6.QtWidgets import (
     QDialog,
     QFileDialog,
     QFormLayout,
+    QFrame,
     QHBoxLayout,
     QLabel,
     QLineEdit,
     QPushButton,
     QVBoxLayout,
 )
+from idm_gui.widgets.download_table import format_bytes
 
 
 class DownloadInfoDialog(QDialog):
@@ -25,56 +28,90 @@ class DownloadInfoDialog(QDialog):
         filename: str = "",
         save_path: str = "",
         category: str = "General",
+        file_size: int = 0,
         parent=None
     ):
         super().__init__(parent)
         self.setWindowTitle("Download File Info")
-        self.setMinimumWidth(500)
+        self.setWindowFlags(Qt.WindowType.Window)
+        self.setMinimumWidth(560)
         self.start_immediately = True
 
-        self._setup_ui(url, filename, save_path, category)
+        self._setup_ui(url, filename, save_path, category, file_size)
 
-    def _setup_ui(self, url: str, filename: str, save_path: str, category: str):
+    def _setup_ui(self, url: str, filename: str, save_path: str, category: str, file_size: int):
         layout = QVBoxLayout(self)
-        layout.setSpacing(12)
+        layout.setSpacing(14)
+        layout.setContentsMargins(16, 16, 16, 16)
+
+        # Header Info Banner
+        header_box = QFrame()
+        header_box.setStyleSheet("background: #1b2631; border: 1px solid #2e4053; border-radius: 6px; padding: 6px;")
+        header_layout = QHBoxLayout(header_box)
+        header_icon = QLabel("📥")
+        header_icon.setStyleSheet("font-size: 24px;")
+        header_title = QLabel("<b>Internet Download Manager</b> - File Download Information")
+        header_title.setStyleSheet("font-size: 13px; color: #5dade2;")
+        header_layout.addWidget(header_icon)
+        header_layout.addWidget(header_title)
+        header_layout.addStretch()
+        layout.addWidget(header_box)
 
         form = QFormLayout()
         form.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
+        form.setSpacing(10)
 
         # URL
         self.url_edit = QLineEdit(url)
-        form.addRow("URL:", self.url_edit)
+        self.url_edit.setPlaceholderText("https://example.com/file.zip")
+        form.addRow("<b>URL:</b>", self.url_edit)
 
         # Category
         self.category_combo = QComboBox()
         self.category_combo.addItems(["General", "Compressed", "Documents", "Music", "Programs", "Video"])
         if category in ["General", "Compressed", "Documents", "Music", "Programs", "Video"]:
             self.category_combo.setCurrentText(category)
-        form.addRow("Category:", self.category_combo)
+        form.addRow("<b>Category:</b>", self.category_combo)
 
         # Save As
         save_layout = QHBoxLayout()
-        self.save_edit = QLineEdit(save_path or os.path.expanduser(f"~/Downloads/{filename}"))
-        self.browse_btn = QPushButton("Browse...")
+        default_save = save_path or os.path.expanduser(f"~/Downloads/{filename or 'download'}")
+        self.save_edit = QLineEdit(default_save)
+        self.browse_btn = QPushButton("📁 Browse...")
         self.browse_btn.clicked.connect(self._on_browse)
         save_layout.addWidget(self.save_edit)
         save_layout.addWidget(self.browse_btn)
-        form.addRow("Save As:", save_layout)
+        form.addRow("<b>Save As:</b>", save_layout)
+
+        # File Size Info
+        size_text = format_bytes(file_size) if file_size > 0 else "Unknown (will probe on start)"
+        self.size_label = QLabel(size_text)
+        self.size_label.setStyleSheet("color: #f4d03f; font-weight: bold;")
+        form.addRow("<b>File Size:</b>", self.size_label)
 
         layout.addLayout(form)
 
+        # Separator line
+        sep = QFrame()
+        sep.setFrameShape(QFrame.Shape.HLine)
+        sep.setStyleSheet("color: #2e4053;")
+        layout.addWidget(sep)
+
         # Action Buttons
         btn_layout = QHBoxLayout()
+        btn_layout.setSpacing(10)
         btn_layout.addStretch()
 
-        self.btn_later = QPushButton("Download Later")
+        self.btn_later = QPushButton("⏱ Download Later")
+        self.btn_later.setToolTip("Add to queue list without starting download now")
         self.btn_later.clicked.connect(self._on_download_later)
 
-        self.btn_now = QPushButton("Start Download")
+        self.btn_now = QPushButton("📥 Start Download")
         self.btn_now.setDefault(True)
+        self.btn_now.setStyleSheet("background: #1b4f72; color: #ffffff; font-weight: bold; padding: 6px 14px;")
         self.btn_now.clicked.connect(self._on_download_now)
 
-        self.btn_cancel = QPushButton("Cancel")
+        self.btn_cancel = QPushButton("✖ Cancel")
         self.btn_cancel.clicked.connect(self.reject)
 
         btn_layout.addWidget(self.btn_later)

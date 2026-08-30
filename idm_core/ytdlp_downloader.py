@@ -22,6 +22,7 @@ class YTDLPDownloader:
         config: Optional[Config] = None,
         speed_limit: int = 0,
         headers: Optional[Dict[str, str]] = None,
+        quality: Optional[str] = None,
         on_progress: Optional[Callable[[str, Dict[str, Any]], None]] = None,
         on_segment_update: Optional[Callable[[str, List[dict]], None]] = None,
         on_complete: Optional[Callable[[str, str], None]] = None,
@@ -34,6 +35,7 @@ class YTDLPDownloader:
         self.config = config or Config()
         self.speed_limit = speed_limit
         self.headers = headers or {}
+        self.quality = quality
         self.on_progress = on_progress
         self.on_segment_update = on_segment_update
         self.on_complete = on_complete
@@ -118,10 +120,24 @@ class YTDLPDownloader:
             "--progress",
             "-N", "8",
             "--no-playlist",
-            "--extractor-args", "youtube:player_client=android,web,tv",
+            "--remote-components", "ejs:github",
             "-o", self.save_path,
-            self.url
         ]
+
+        # Quality and format selection
+        q_str = str(self.quality or self.headers.get("quality", "")).lower().strip()
+        is_audio = "audio" in q_str or "mp3" in q_str or self.save_path.lower().endswith((".mp3", ".m4a", ".aac"))
+
+        if is_audio:
+            cmd.extend(["-f", "bestaudio/best", "-x", "--audio-format", "mp3"])
+        elif q_str:
+            height = "".join(filter(str.isdigit, q_str))
+            if height:
+                cmd.extend(["-f", f"bestvideo[height<={height}]+bestaudio/best[height<={height}]/best[height<={height}]/best"])
+            else:
+                cmd.extend(["-f", "bestvideo+bestaudio/best"])
+        else:
+            cmd.extend(["-f", "bestvideo+bestaudio/best"])
 
         # Add node js runtime if present
         if shutil.which("node"):
@@ -132,7 +148,9 @@ class YTDLPDownloader:
         if os.path.exists(firefox_dir):
             cmd.extend(["--cookies-from-browser", "firefox"])
 
-        self.log(f"Starting video stream download with {bin_name}...")
+        cmd.append(self.url)
+
+        self.log(f"Starting video stream download with {bin_name} (quality: {q_str or 'best'})...")
 
         try:
             self._process = subprocess.Popen(
