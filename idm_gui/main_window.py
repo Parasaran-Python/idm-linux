@@ -48,6 +48,7 @@ class MainWindow(QMainWindow):
         self.engine = engine or DownloadEngine(self.config)
 
         self.setWindowTitle("IDM Linux - Internet Download Manager")
+        self.setWindowFlags(Qt.WindowType.Window)
         self.resize(1020, 640)
         self.setStyleSheet(IDM_DARK_THEME)
 
