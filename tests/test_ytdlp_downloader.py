@@ -51,7 +51,8 @@ class TestYTDLPDownloader(unittest.TestCase):
         mock_res.returncode = 0
         mock_res.stdout = json.dumps(sample_json)
 
-        with patch("subprocess.run", return_value=mock_res):
+        with patch.object(YTDLPDownloader, "is_ytdlp_available", return_value=True), \
+             patch("subprocess.run", return_value=mock_res):
             formats = YTDLPDownloader.extract_media_formats("https://example.com/video")
             self.assertTrue(len(formats) >= 3)
             # Should have 1080p, 720p, 360p, and audio
