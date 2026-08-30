@@ -258,6 +258,64 @@
   }
 
   /**
+   * Validate that an element is a real, visible, non-trivial video player
+   */
+  function isValidVideoElement(el) {
+    if (!el || !(el instanceof HTMLElement)) return false;
+    try {
+      const style = window.getComputedStyle(el);
+      if (style.display === "none" || style.visibility === "hidden" || parseFloat(style.opacity || "1") < 0.1) {
+        return false;
+      }
+      const rect = el.getBoundingClientRect();
+      // Must be at least 160x90 px (standard 16:9 thumbnail minimum) to avoid audio beacons / tracking pixels
+      if (rect.width < 160 || rect.height < 90) {
+        return false;
+      }
+      // Must be within viewport or slightly near it
+      if (rect.bottom < 0 || rect.top > window.innerHeight + 600) {
+        return false;
+      }
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  /**
+   * Find the primary active and visible video element
+   */
+  function findActiveVideo() {
+    if (activePlayerEl && isValidVideoElement(activePlayerEl)) {
+      return activePlayerEl;
+    }
+    const candidates = Array.from(document.querySelectorAll("video, #movie_player, .html5-video-player"));
+    for (const v of candidates) {
+      if (isValidVideoElement(v)) {
+        return v;
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Check if current page URL is a known video watch page
+   */
+  function isVideoWatchPage() {
+    const host = window.location.hostname;
+    const path = window.location.pathname;
+
+    if (host.includes("youtube.com")) {
+      return path.startsWith("/watch") || path.startsWith("/shorts") || path.startsWith("/live");
+    }
+    if (host.includes("youtu.be")) return true;
+    if (host.includes("vimeo.com")) return path.length > 1 && path !== "/";
+    if (host.includes("dailymotion.com")) return path.startsWith("/video");
+    if (host.includes("twitch.tv")) return path.length > 1 && path !== "/";
+    return false;
+  }
+
+  /**
    * Position the floating bar over the active video element
    */
   function repositionBar() {
@@ -269,16 +327,11 @@
       return;
     }
 
-    const video = activePlayerEl || document.querySelector("video, audio, #movie_player, .html5-video-player");
-    const isVideoSite =
-      window.location.hostname.includes("youtube.com") ||
-      window.location.hostname.includes("vimeo.com") ||
-      window.location.hostname.includes("dailymotion.com") ||
-      window.location.hostname.includes("twitch.tv") ||
-      window.location.hostname.includes("twitter.com") ||
-      window.location.hostname.includes("x.com");
+    const video = findActiveVideo();
+    const isWatchPage = isVideoWatchPage();
 
-    if (!video && !isVideoSite && capturedStreams.size === 0) {
+    // Do NOT show grabber on pages without an actual visible video element
+    if (!video && !isWatchPage) {
       if (floatingBar) floatingBar.style.display = "none";
       return;
     }
@@ -294,9 +347,9 @@
       return;
     }
 
-    if (video && video.getBoundingClientRect) {
+    if (video) {
       const rect = video.getBoundingClientRect();
-      if (rect.width > 60 && rect.height > 40 && rect.bottom > 0 && rect.top < window.innerHeight) {
+      if (rect.width >= 160 && rect.height >= 90 && rect.bottom > 0 && rect.top < window.innerHeight) {
         bar.style.top = `${Math.max(14, rect.top + 14)}px`;
         bar.style.right = `${Math.max(16, (window.innerWidth - rect.right) + 16)}px`;
         bar.style.left = "auto";
@@ -304,36 +357,47 @@
       }
     }
 
-    // Default top-right position
-    bar.style.top = "70px";
-    bar.style.right = "24px";
-    bar.style.left = "auto";
+    // Default top-right positioning on active watch pages
+    if (isWatchPage) {
+      bar.style.top = "80px";
+      bar.style.right = "24px";
+      bar.style.left = "auto";
+    } else if (floatingBar) {
+      floatingBar.style.display = "none";
+    }
   }
 
   /**
    * Scan page and hook player elements
    */
   function scanMediaElements() {
-    const mediaEls = document.querySelectorAll("video, audio");
-    if (mediaEls.length > 0) {
-      activePlayerEl = mediaEls[0];
-      mediaEls.forEach((el) => {
-        if (!el.dataset.idmHooked) {
-          el.dataset.idmHooked = "true";
-          el.addEventListener("mouseenter", () => {
-            activePlayerEl = el;
-            repositionBar();
-          });
-          el.addEventListener("play", () => {
-            activePlayerEl = el;
-            repositionBar();
-          });
-        }
-      });
-      repositionBar();
-    } else if (window.location.hostname.includes("youtube.com")) {
-      repositionBar();
+    const video = findActiveVideo();
+    const isWatch = isVideoWatchPage();
+
+    if (!video && !isWatch) {
+      if (floatingBar) floatingBar.style.display = "none";
+      return;
     }
+
+    const mediaEls = document.querySelectorAll("video");
+    mediaEls.forEach((el) => {
+      if (!el.dataset.idmHooked) {
+        el.dataset.idmHooked = "true";
+        el.addEventListener("mouseenter", () => {
+          if (isValidVideoElement(el)) {
+            activePlayerEl = el;
+            repositionBar();
+          }
+        });
+        el.addEventListener("play", () => {
+          if (isValidVideoElement(el)) {
+            activePlayerEl = el;
+            repositionBar();
+          }
+        });
+      }
+    });
+    repositionBar();
   }
 
   // 1. Listen to Page Hook Custom Events
