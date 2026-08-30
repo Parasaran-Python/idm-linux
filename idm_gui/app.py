@@ -44,8 +44,13 @@ def main():
             client.send_request({"action": "show_gui"})
         sys.exit(0)
 
+    # Prevent GNOME Wayland client-side decoration crashes
+    os.environ.setdefault("QT_WAYLAND_DISABLE_WINDOWDECORATION", "1")
+    os.environ.setdefault("QT_QPA_PLATFORM", "wayland;xcb")
+
     # 2. Launch Main Qt Application
     app = QApplication(sys.argv)
+    app.setStyle("Fusion")
     app.setApplicationName("IDM Linux")
     app.setOrganizationName("IDM Linux Team")
     app.setWindowIcon(QIcon(create_tray_icon_pixmap()))
