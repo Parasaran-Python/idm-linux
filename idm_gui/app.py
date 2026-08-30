@@ -6,6 +6,7 @@ Handles single-instance IPC handoff, command-line arguments, and main loop.
 import argparse
 import os
 import sys
+import traceback
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QIcon, QPixmap
 from PyQt6.QtWidgets import QApplication
@@ -16,6 +17,19 @@ from idm_gui.styles import IDM_DARK_THEME
 from idm_gui.tray import IDMTrayIcon, create_tray_icon_pixmap
 from idm_ipc.socket_client import IPCClient
 from idm_ipc.socket_server import IPCServer
+
+
+def _handle_exception(exc_type, exc_value, exc_tb):
+    if issubclass(exc_type, KeyboardInterrupt):
+        sys.__excepthook__(exc_type, exc_value, exc_tb)
+        return
+    print("[IDM Unhandled Exception]:", file=sys.stderr)
+    traceback.print_exception(exc_type, exc_value, exc_tb)
+
+
+sys.excepthook = _handle_exception
+if hasattr(sys, "unraisablehook"):
+    sys.unraisablehook = lambda u: print(f"[IDM Unraisable Warning]: {u.exc_value}", file=sys.stderr)
 
 
 def main():
