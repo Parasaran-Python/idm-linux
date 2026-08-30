@@ -1,6 +1,6 @@
 /**
  * IDM Linux - Classic Floating Video Grabber & Sniffer
- * Renders the iconic Windows IDM "Download this video" button above players with dismiss option.
+ * Renders the iconic Windows IDM "Download this video" button above players with dismiss & drag options.
  */
 
 (function () {
@@ -14,6 +14,7 @@
   let floatingBar = null;
   let activePlayerEl = null;
   let userDismissed = false;
+  let customPosition = null; // { x, y }
 
   /**
    * Inject Main-World Page Hook Script
@@ -45,7 +46,7 @@
   }
 
   /**
-   * Create the iconic IDM Floating Download Banner with Dismiss Option
+   * Create the iconic IDM Floating Download Banner with Dismiss & Drag Options
    */
   function createFloatingDownloadBar() {
     if (floatingBar && document.contains(floatingBar)) {
@@ -58,6 +59,11 @@
 
     const wrapper = document.createElement("div");
     wrapper.className = "idm-grabber-pill-wrapper";
+
+    const dragHandle = document.createElement("div");
+    dragHandle.className = "idm-grabber-drag-handle";
+    dragHandle.title = "Drag to reposition IDM bar";
+    dragHandle.innerHTML = `⠿`;
 
     const button = document.createElement("div");
     button.className = "idm-grabber-button";
@@ -82,6 +88,7 @@
       container.style.display = "none";
     });
 
+    wrapper.appendChild(dragHandle);
     wrapper.appendChild(button);
     wrapper.appendChild(closeBtn);
 
@@ -147,9 +154,57 @@
       });
     }
 
+    // Dragging Logic
+    let isDragging = false;
+    let dragStartX = 0, dragStartY = 0;
+    let initialLeft = 0, initialTop = 0;
+    let hasMoved = false;
+
+    function onPointerDown(e) {
+      if (e.target.closest(".idm-grabber-close-btn") || e.target.closest(".idm-grabber-menu")) {
+        return;
+      }
+      isDragging = true;
+      hasMoved = false;
+      dragStartX = e.clientX;
+      dragStartY = e.clientY;
+      const rect = container.getBoundingClientRect();
+      initialLeft = rect.left;
+      initialTop = rect.top;
+      window.addEventListener("pointermove", onPointerMove);
+      window.addEventListener("pointerup", onPointerUp);
+    }
+
+    function onPointerMove(e) {
+      if (!isDragging) return;
+      const dx = e.clientX - dragStartX;
+      const dy = e.clientY - dragStartY;
+      if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
+        hasMoved = true;
+        container.classList.add("idm-is-dragging");
+        const newX = Math.max(10, Math.min(window.innerWidth - 120, initialLeft + dx));
+        const newY = Math.max(10, Math.min(window.innerHeight - 50, initialTop + dy));
+        container.style.left = `${newX}px`;
+        container.style.top = `${newY}px`;
+        container.style.right = "auto";
+        customPosition = { x: newX, y: newY };
+      }
+    }
+
+    function onPointerUp(e) {
+      if (!isDragging) return;
+      isDragging = false;
+      container.classList.remove("idm-is-dragging");
+      window.removeEventListener("pointermove", onPointerMove);
+      window.removeEventListener("pointerup", onPointerUp);
+    }
+
+    wrapper.addEventListener("pointerdown", onPointerDown);
+
     button.addEventListener("click", (e) => {
       e.stopPropagation();
       e.preventDefault();
+      if (hasMoved) return; // Ignore click if drag occurred
       populateMenu();
       menu.classList.toggle("idm-menu-open");
     });
@@ -194,11 +249,20 @@
     const bar = createFloatingDownloadBar();
     bar.style.display = "block";
 
+    // If user dragged to custom location, preserve it
+    if (customPosition) {
+      bar.style.left = `${customPosition.x}px`;
+      bar.style.top = `${customPosition.y}px`;
+      bar.style.right = "auto";
+      return;
+    }
+
     if (video && video.getBoundingClientRect) {
       const rect = video.getBoundingClientRect();
       if (rect.width > 60 && rect.height > 40 && rect.bottom > 0 && rect.top < window.innerHeight) {
         bar.style.top = `${Math.max(14, rect.top + 14)}px`;
         bar.style.right = `${Math.max(16, (window.innerWidth - rect.right) + 16)}px`;
+        bar.style.left = "auto";
         return;
       }
     }
@@ -206,6 +270,7 @@
     // Default top-right position
     bar.style.top = "70px";
     bar.style.right = "24px";
+    bar.style.left = "auto";
   }
 
   /**
@@ -264,6 +329,7 @@
 
   window.addEventListener("yt-navigate-finish", () => {
     userDismissed = false;
+    customPosition = null;
     capturedStreams.clear();
     scanMediaElements();
   });

@@ -118,6 +118,7 @@ class YTDLPDownloader:
             "--progress",
             "-N", "8",
             "--no-playlist",
+            "--extractor-args", "youtube:player_client=android,web,tv",
             "-o", self.save_path,
             self.url
         ]
@@ -125,6 +126,11 @@ class YTDLPDownloader:
         # Add node js runtime if present
         if shutil.which("node"):
             cmd.extend(["--js-runtimes", f"node:{shutil.which('node')}"])
+
+        # Add firefox browser cookies if available to authenticate streams
+        firefox_dir = os.path.expanduser("~/.mozilla/firefox")
+        if os.path.exists(firefox_dir):
+            cmd.extend(["--cookies-from-browser", "firefox"])
 
         self.log(f"Starting video stream download with {bin_name}...")
 
