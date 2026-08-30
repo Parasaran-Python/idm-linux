@@ -27,10 +27,36 @@ class TestCLI(unittest.TestCase):
 
         parser = build_parser()
         args = parser.parse_args(["add", "https://example.com/test.zip"])
-        
         ret = run_cli_command(args, client=mock_client)
         self.assertEqual(ret, 0)
         mock_client.send_request.assert_called_once()
+
+    def test_run_cli_subcommands(self):
+        mock_client = MagicMock()
+        mock_client.send_request.return_value = {"status": "ok", "downloads": []}
+        parser = build_parser()
+
+        # Pause
+        ret = run_cli_command(parser.parse_args(["pause", "dl-123"]), client=mock_client)
+        self.assertEqual(ret, 0)
+
+        # Resume
+        ret = run_cli_command(parser.parse_args(["resume", "dl-123"]), client=mock_client)
+        self.assertEqual(ret, 0)
+
+        # Delete
+        ret = run_cli_command(parser.parse_args(["delete", "dl-123", "--files"]), client=mock_client)
+        self.assertEqual(ret, 0)
+
+        # Queue start
+        ret = run_cli_command(parser.parse_args(["queue", "start", "main"]), client=mock_client)
+        self.assertEqual(ret, 0)
+
+        # Status
+        mock_client.is_server_running.return_value = True
+        mock_client.ping.return_value = {"status": "ok", "version": "1.0.0", "app": "IDM Linux"}
+        ret = run_cli_command(parser.parse_args(["status"]), client=mock_client)
+        self.assertEqual(ret, 0)
 
 
 if __name__ == "__main__":

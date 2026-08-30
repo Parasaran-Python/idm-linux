@@ -10,7 +10,15 @@ from idm_core.config import Config
 class CategoryManager:
     def __init__(self, config: Optional[Config] = None):
         self.config = config or Config()
-        self.categories: Dict[str, List[str]] = self.config.categories
+        self.categories: Dict[str, List[str]] = dict(self.config.categories)
+
+    def add_category_extension(self, category: str, extension: str):
+        """Dynamically add or override an extension for a category."""
+        ext_clean = extension.lower().lstrip(".")
+        if category not in self.categories:
+            self.categories[category] = []
+        if ext_clean not in self.categories[category]:
+            self.categories[category].append(ext_clean)
 
     def get_category_for_filename(self, filename: str) -> str:
         """Determine category from filename extension."""
