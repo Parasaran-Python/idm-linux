@@ -123,6 +123,46 @@ class StorageManager:
             os.makedirs(target, exist_ok=True)
         return shutil.disk_usage(target).free
 
+    def move_to_trash(self, filepath: str) -> bool:
+        """Move a file to the system FreeDesktop Trash / Recycle Bin (standard on Linux)."""
+        if not filepath or not os.path.exists(filepath):
+            return False
+
+        # 1. Try standard gio trash (GNOME, KDE, modern Linux)
+        if shutil.which("gio"):
+            try:
+                import subprocess
+                res = subprocess.run(["gio", "trash", filepath], capture_output=True)
+                if res.returncode == 0:
+                    return True
+            except Exception:
+                pass
+
+        # 2. Try trash-put (trash-cli)
+        if shutil.which("trash-put"):
+            try:
+                import subprocess
+                res = subprocess.run(["trash-put", filepath], capture_output=True)
+                if res.returncode == 0:
+                    return True
+            except Exception:
+                pass
+
+        # 3. Fallback: move to FreeDesktop ~/.local/share/Trash/files/
+        try:
+            trash_dir = os.path.expanduser("~/.local/share/Trash/files")
+            os.makedirs(trash_dir, exist_ok=True)
+            dest_name = self.get_unique_filename(trash_dir, os.path.basename(filepath))
+            dest = os.path.join(trash_dir, dest_name)
+            shutil.move(filepath, dest)
+            return True
+        except Exception:
+            try:
+                os.remove(filepath)
+                return True
+            except Exception:
+                return False
+
     def get_unique_filename(self, directory: str, filename: str) -> str:
         """Generate a collision-free filename in directory (e.g. file (1).zip)."""
         base, ext = os.path.splitext(filename)
