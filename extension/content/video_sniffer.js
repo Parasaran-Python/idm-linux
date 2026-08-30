@@ -143,29 +143,30 @@
         // Trigger background format resolution
         fetchFormatsForCurrentPage();
 
-        const isYouTube = window.location.hostname.includes("youtube.com");
-        if (isYouTube) {
+        const isVideoSite = isVideoWatchPage();
+        if (isVideoSite) {
           // Provide instant standard quality options while query_media_formats runs in background
           items = [
-            { label: "1080p 60fps (Full HD)", format: "MP4", quality: "1080", url: currentUrl },
-            { label: "720p HD", format: "MP4", quality: "720", url: currentUrl },
-            { label: "480p SD", format: "MP4", quality: "480", url: currentUrl },
-            { label: "360p Medium", format: "MP4", quality: "360", url: currentUrl },
-            { label: "Audio Only (128k MP3)", format: "MP3", quality: "audio", url: currentUrl }
+            { label: "1080p (Full HD)", format: "MP4", quality: "1080", url: currentUrl },
+            { label: "720p (HD)", format: "MP4", quality: "720", url: currentUrl },
+            { label: "480p (SD)", format: "MP4", quality: "480", url: currentUrl },
+            { label: "360p (SD)", format: "MP4", quality: "360", url: currentUrl },
+            { label: "Audio Only (MP3)", format: "MP3", quality: "audio", url: currentUrl }
           ];
         } else if (capturedStreams.size > 0) {
-          // 2. Add in-page sniffed media streams (HLS, DASH, direct MP4)
+          // Add clean direct media files (MP4, WebM)
           capturedStreams.forEach((meta, streamUrl) => {
-            let label = meta.format || "Media Stream";
-            if (streamUrl.includes(".m3u8")) label = "HLS Master Stream (.m3u8)";
-            else if (streamUrl.includes(".mpd")) label = "DASH Video Stream (.mpd)";
-            else if (streamUrl.includes(".mp4")) label = "Direct MP4 Stream";
-            else if (streamUrl.includes(".webm")) label = "WebM Stream";
+            if (streamUrl.includes(".m3u8") || streamUrl.includes(".mpd") || streamUrl.includes("videoplayback")) {
+              return; // Skip raw chunk / internal streaming URLs in user menu
+            }
+            let label = "Direct Media File";
+            if (streamUrl.includes(".mp4")) label = "Direct MP4 Video (Original Quality)";
+            else if (streamUrl.includes(".webm")) label = "Direct WebM Video";
             items.push({ label: label, format: "MP4", quality: "best", url: streamUrl });
           });
         }
 
-        // If empty, show loading indicator while fetching
+        // If empty, show extracting indicator while background query finishes
         if (items.length === 0) {
           items.push({ label: "⏳ Extracting available formats...", format: "SCAN", quality: "best", url: currentUrl, disabled: true });
         }
