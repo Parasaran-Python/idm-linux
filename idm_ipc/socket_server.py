@@ -111,6 +111,10 @@ class IPCServer:
             if action == "ping":
                 return {"status": "ok", "pong": True}
 
+            elif action in ["show_gui", "open_gui"]:
+                self.engine.notify("show_gui", {})
+                return {"status": "ok", "message": "GUI window raised"}
+
             elif action == "add_download":
                 url = msg.get("url")
                 if not url:

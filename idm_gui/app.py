@@ -40,8 +40,8 @@ def main():
                 "start_immediately": True
             })
         else:
-            print("[IDM] IDM is already running. Showing existing window.")
-            client.send_request({"action": "ping"})
+            print("[IDM] IDM is already running. Raising existing window.")
+            client.send_request({"action": "show_gui"})
         sys.exit(0)
 
     # 2. Launch Main Qt Application

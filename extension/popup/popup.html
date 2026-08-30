@@ -14,6 +14,17 @@
     <span id="engine-badge" class="badge badge-disconnected">Checking...</span>
   </div>
 
+  <!-- Direct URL Download Box -->
+  <div class="card add-url-card">
+    <div class="card-title">Add URL to Download:</div>
+    <div class="input-group">
+      <input type="text" id="input-url" placeholder="https://example.com/file.zip" autocomplete="off" spellcheck="false">
+      <button id="btn-start-download" class="btn btn-primary">➕ Download</button>
+    </div>
+    <div id="url-feedback" class="feedback-msg"></div>
+  </div>
+
+  <!-- Settings Toggles -->
   <div class="card">
     <div class="setting-row">
       <label for="toggle-intercept">Automatic Download Intercept</label>
@@ -25,13 +36,13 @@
     </div>
   </div>
 
+  <!-- Open Desktop App -->
   <div class="actions">
-    <button id="btn-add-url" class="btn btn-primary">➕ Add URL to IDM</button>
-    <button id="btn-open-gui" class="btn btn-secondary">🖥 Open IDM App</button>
+    <button id="btn-open-gui" class="btn btn-secondary btn-full">🖥 Open IDM Desktop App</button>
   </div>
 
   <div class="footer">
-    <span class="version">v1.0.0 (Native IPC Connected)</span>
+    <span class="version">IDM Linux v1.0.1 (Native Bridge)</span>
   </div>
 
   <script src="popup.js"></script>
