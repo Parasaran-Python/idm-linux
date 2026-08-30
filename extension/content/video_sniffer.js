@@ -9,6 +9,7 @@
   // Prevent multiple injections
   if (window.__idm_sniffer_injected) return;
   window.__idm_sniffer_injected = true;
+  console.log("[IDM-SNIFFER] Content script active on:", window.location.href);
 
   const capturedStreams = new Map(); // url -> { title, format, type }
   let floatingBar = null;
@@ -278,12 +279,10 @@
         return false;
       }
       const rect = el.getBoundingClientRect();
-      // Must be at least 160x90 px (standard 16:9 thumbnail minimum) to avoid audio beacons / tracking pixels
-      if (rect.width < 160 || rect.height < 90) {
-        return false;
-      }
-      // Must be within viewport or slightly near it
-      if (rect.bottom < 0 || rect.top > window.innerHeight + 600) {
+      const w = Math.max(rect.width, el.offsetWidth, el.videoWidth || 0);
+      const h = Math.max(rect.height, el.offsetHeight, el.videoHeight || 0);
+      // Must be at least 160x90 px to avoid audio beacons / tracking pixels
+      if (w < 160 || h < 90) {
         return false;
       }
       return true;
@@ -299,7 +298,7 @@
     if (activePlayerEl && isValidVideoElement(activePlayerEl)) {
       return activePlayerEl;
     }
-    const candidates = Array.from(document.querySelectorAll("video, #movie_player, .html5-video-player"));
+    const candidates = Array.from(document.querySelectorAll("video, #movie_player, .html5-video-player, [data-player]"));
     for (const v of candidates) {
       if (isValidVideoElement(v)) {
         return v;
@@ -340,13 +339,16 @@
     const video = findActiveVideo();
     const isWatchPage = isVideoWatchPage();
 
-    // Do NOT show grabber on pages without an actual visible video element
+    // Do NOT show grabber on pages without an actual video element or known watch page
     if (!video && !isWatchPage) {
       if (floatingBar) floatingBar.style.display = "none";
       return;
     }
 
     const bar = createFloatingDownloadBar();
+    if (!document.contains(bar)) {
+      (document.fullscreenElement || document.body || document.documentElement).appendChild(bar);
+    }
     bar.style.display = "block";
 
     // If user dragged to custom location, preserve it
@@ -359,7 +361,7 @@
 
     if (video) {
       const rect = video.getBoundingClientRect();
-      if (rect.width >= 160 && rect.height >= 90 && rect.bottom > 0 && rect.top < window.innerHeight) {
+      if (rect.bottom > 0 && rect.top < window.innerHeight) {
         bar.style.top = `${Math.max(14, rect.top + 14)}px`;
         bar.style.right = `${Math.max(16, (window.innerWidth - rect.right) + 16)}px`;
         bar.style.left = "auto";
@@ -367,30 +369,26 @@
       }
     }
 
-    // Default top-right positioning on active watch pages
-    if (isWatchPage) {
-      bar.style.top = "80px";
-      bar.style.right = "24px";
-      bar.style.left = "auto";
-    } else if (floatingBar) {
-      floatingBar.style.display = "none";
-    }
+    // Default top-right positioning on active watch pages or when video is below fold
+    bar.style.top = "80px";
+    bar.style.right = "24px";
+    bar.style.left = "auto";
   }
 
   /**
    * Scan page and hook player elements
    */
   function scanMediaElements() {
-    const video = findActiveVideo();
-    const isWatch = isVideoWatchPage();
+    const mediaEls = document.querySelectorAll("video, #movie_player, .html5-video-player");
+    let foundValid = false;
 
-    if (!video && !isWatch) {
-      if (floatingBar) floatingBar.style.display = "none";
-      return;
-    }
-
-    const mediaEls = document.querySelectorAll("video");
     mediaEls.forEach((el) => {
+      if (isValidVideoElement(el)) {
+        foundValid = true;
+        if (!activePlayerEl) {
+          activePlayerEl = el;
+        }
+      }
       if (!el.dataset.idmHooked) {
         el.dataset.idmHooked = "true";
         el.addEventListener("mouseenter", () => {
@@ -407,6 +405,14 @@
         });
       }
     });
+
+    const isWatch = isVideoWatchPage();
+    console.log("[IDM-SNIFFER] scanMediaElements, foundValid:", foundValid, "isWatch:", isWatch, "mediaEls:", mediaEls.length);
+    if (!foundValid && !isWatch && capturedStreams.size === 0) {
+      if (floatingBar) floatingBar.style.display = "none";
+      return;
+    }
+
     repositionBar();
   }
 
@@ -438,12 +444,14 @@
 
   // 3. Initialize & Continuous Polling
   scanMediaElements();
-  setInterval(scanMediaElements, 1200);
+  document.addEventListener("DOMContentLoaded", scanMediaElements);
+  window.addEventListener("load", scanMediaElements);
+  setInterval(scanMediaElements, 1000);
   window.addEventListener("scroll", repositionBar, { passive: true });
   window.addEventListener("resize", repositionBar, { passive: true });
   document.addEventListener("fullscreenchange", () => {
     if (floatingBar) {
-      (document.fullscreenElement || document.body).appendChild(floatingBar);
+      (document.fullscreenElement || document.body || document.documentElement).appendChild(floatingBar);
     }
     repositionBar();
   });
