@@ -208,18 +208,25 @@ class YTDLPDownloader:
                 fps = f.get("fps") or 30
                 raw_sz = get_format_size(f)
                 tbr = f.get("tbr") or f.get("vbr") or 0
-                total_sz = raw_sz + (best_audio_sz if acodec == "none" else 0)
+                is_separate_video = (acodec == "none")
+                total_sz = raw_sz + (best_audio_sz if is_separate_video else 0)
                 vcodec_score = cls._get_vcodec_priority(vcodec)
 
                 # Format preference matching yt-dlp:
-                # Higher fps > Higher codec efficiency (av01 > vp9 > avc1) > Bitrate/Size
+                # 1. Prefer separate adaptive video streams over pre-muxed streams when best audio is present
+                # 2. Higher fps > Higher codec efficiency (av01 > vp9 > avc1) > Bitrate/Size
                 is_better = False
                 if h not in tier_map:
                     is_better = True
                 else:
                     curr = tier_map[h]
                     curr_score = curr.get("vcodec_score", 0)
-                    if fps > curr["fps"]:
+                    curr_is_separate = curr.get("is_separate_video", False)
+                    if best_audio_format and is_separate_video and not curr_is_separate:
+                        is_better = True
+                    elif best_audio_format and not is_separate_video and curr_is_separate:
+                        is_better = False
+                    elif fps > curr["fps"]:
                         is_better = True
                     elif fps == curr["fps"]:
                         if vcodec_score > curr_score:
@@ -250,6 +257,7 @@ class YTDLPDownloader:
                         "fps": fps,
                         "tbr": tbr,
                         "vcodec_score": vcodec_score,
+                        "is_separate_video": is_separate_video,
                         "quality": str(h),
                         "format": "MP4",
                         "raw_sz": raw_sz,
@@ -377,7 +385,18 @@ class YTDLPDownloader:
                 except Exception:
                     pass
 
+    def _resolve_initial_size_if_needed(self):
+        """Auto-probe media info on start if total_bytes is 0 or uninitialized."""
+        if self.total_bytes <= 0 and self.url and self.is_ytdlp_available():
+            try:
+                info = self.probe_media_info(self.url, quality=self.quality or self.headers.get("quality"))
+                if info and info.get("filesize", 0) > 0:
+                    self.total_bytes = info["filesize"]
+            except Exception:
+                pass
+
     def _run_ytdlp(self):
+        self._resolve_initial_size_if_needed()
         self._completed_streams_bytes = 0
         self._current_stream_total = 0
         self._current_stream_downloaded = 0
@@ -548,7 +567,12 @@ class YTDLPDownloader:
                 self._current_stream_downloaded = int((pct / 100.0) * self._current_stream_total)
 
                 self.downloaded_bytes = self._completed_streams_bytes + self._current_stream_downloaded
-                self.total_bytes = max(self.total_bytes, self._completed_streams_bytes + self._current_stream_total)
+                if self._completed_streams_bytes > 0:
+                    self.total_bytes = self._completed_streams_bytes + self._current_stream_total
+                elif self.total_bytes <= 0:
+                    self.total_bytes = self._current_stream_total
+                else:
+                    self.total_bytes = max(self.total_bytes, self._current_stream_total)
 
             speed_match = re.search(r"at\s+(\d+(?:\.\d+)?)\s*([KMGT]?i?B)/s", line, re.I)
             if speed_match:

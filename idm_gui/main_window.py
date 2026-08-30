@@ -384,6 +384,8 @@ class MainWindow(QMainWindow):
                     filename=data["filename"],
                     save_path=data["save_path"],
                     category=data["category"],
+                    headers=dialog.headers,
+                    total_bytes=dialog.file_size,
                     start_immediately=data["start_immediately"]
                 )
                 self.refresh_downloads()

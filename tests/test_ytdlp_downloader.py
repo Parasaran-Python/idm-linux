@@ -177,6 +177,70 @@ class TestYTDLPDownloader(unittest.TestCase):
             self.assertEqual(info_plain["filesize"], 396000000)
             self.assertEqual(info_audio["filesize"], 26000000)
 
+    def test_premuxed_vs_adaptive_separate_pairing(self):
+        # Format 22 is 720p with audio (20MB), while Format 136 is 720p video-only (25MB) + Format 251 audio (5MB) = 30MB
+        # yt-dlp prefers separate adaptive streams for higher quality
+        sample_json = {
+            "formats": [
+                {"format_id": "22", "height": 720, "fps": 30, "tbr": 1200, "vcodec": "avc1", "acodec": "mp4a", "filesize": 20000000},
+                {"format_id": "136", "height": 720, "fps": 30, "tbr": 2000, "vcodec": "avc1", "acodec": "none", "filesize": 25000000},
+                {"format_id": "251", "height": None, "vcodec": "none", "acodec": "opus", "filesize": 5000000}
+            ]
+        }
+        import json
+        from unittest.mock import patch, MagicMock
+
+        mock_res = MagicMock()
+        mock_res.returncode = 0
+        mock_res.stdout = json.dumps(sample_json)
+
+        with patch.object(YTDLPDownloader, "is_ytdlp_available", return_value=True), \
+             patch("subprocess.run", return_value=mock_res):
+            formats = YTDLPDownloader.extract_media_formats("https://youtube.com/watch?v=123")
+            fmt_720 = next(f for f in formats if f["quality"] == "720")
+            # Should prefer the 25MB video + 5MB audio = 30MB stream pair
+            self.assertEqual(fmt_720["filesize"], 30000000)
+
+    def test_multistream_progress_refines_to_exact_stream_sum(self):
+        # Initial estimate was 400 MiB, but actual streams are 370 MiB video + 26 MiB audio = 396 MiB
+        init_est = int(400.0 * 1024 * 1024)
+        downloader = YTDLPDownloader("multi-refine", "https://youtube.com/watch?v=123", "/tmp/out.mp4", total_bytes=init_est)
+
+        # Stream 1: Video (370 MiB)
+        downloader._parse_line("[download] Destination: /tmp/out.f399.mp4")
+        downloader._parse_line("[download]  50.0% of 370.00MiB at 10.00MiB/s ETA 00:18")
+        # While stream 1 is downloading, total_bytes should maintain the multi-stream estimate
+        self.assertEqual(downloader.downloaded_bytes, int(185.0 * 1024 * 1024))
+        self.assertEqual(downloader.total_bytes, init_est)
+
+        downloader._parse_line("[download] 100.0% of 370.00MiB at 10.00MiB/s ETA 00:00")
+        self.assertEqual(downloader.downloaded_bytes, int(370.0 * 1024 * 1024))
+
+        # Stream 2: Audio (26 MiB)
+        downloader._parse_line("[download] Destination: /tmp/out.f140.m4a")
+        downloader._parse_line("[download]  50.0% of 26.00MiB at 2.00MiB/s ETA 00:06")
+        # Once both streams are active/known, total_bytes should accurately refine to 370 + 26 = 396 MiB
+        self.assertEqual(downloader.downloaded_bytes, int((370.0 + 13.0) * 1024 * 1024))
+        self.assertEqual(downloader.total_bytes, int(396.0 * 1024 * 1024))
+
+        downloader._parse_line("[download] 100.0% of 26.00MiB at 2.00MiB/s ETA 00:00")
+        self.assertEqual(downloader.downloaded_bytes, int(396.0 * 1024 * 1024))
+        self.assertEqual(downloader.total_bytes, int(396.0 * 1024 * 1024))
+
+    def test_ytdlp_downloader_resolves_total_bytes_if_zero(self):
+        downloader = YTDLPDownloader("probe-test", "https://youtube.com/watch?v=123", "/tmp/out.mp4", quality="1080", total_bytes=0)
+        sample_info = {
+            "title": "Probed Video",
+            "filename": "Probed Video.mp4",
+            "filesize": 55000000,
+            "duration": 120
+        }
+        with unittest.mock.patch.object(YTDLPDownloader, "probe_media_info", return_value=sample_info):
+            downloader._resolve_initial_size_if_needed()
+            self.assertEqual(downloader.total_bytes, 55000000)
+
 
 if __name__ == "__main__":
     unittest.main()
+
+
