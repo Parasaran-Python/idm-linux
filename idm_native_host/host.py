@@ -40,38 +40,62 @@ def send_native_message(payload: Dict[str, Any], stream=None):
 
 
 def ensure_idm_running(client: IPCClient) -> bool:
-    """Check if IDM daemon or GUI is running; if not, spawn daemon in background."""
+    """Check if IDM daemon or GUI is running; if not, spawn GUI/daemon in background."""
     if client.is_server_running():
         return True
 
-    # Try launching background daemon or GUI
+    env = os.environ.copy()
+    repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    py_path = env.get("PYTHONPATH", "")
+    env["PYTHONPATH"] = f"/usr/lib/python3/dist-packages:{repo_root}:{py_path}".strip(":")
+
+    # 1. Try launching GUI app via python module
     try:
         cmd = [sys.executable, "-m", "idm_gui.app", "--minimized"]
         subprocess.Popen(
             cmd,
+            env=env,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             start_new_session=True
         )
-        # Wait up to 3 seconds for socket to appear
-        for _ in range(15):
-            time.sleep(0.2)
+        for _ in range(20):
+            time.sleep(0.15)
             if client.is_server_running():
                 return True
     except Exception:
         pass
 
-    # Fallback to daemon directly
+    # 2. Fallback to installed idm-gui binary if present
+    installed_gui = os.path.expanduser("~/.local/bin/idm-gui")
+    if os.path.exists(installed_gui):
+        try:
+            subprocess.Popen(
+                [installed_gui, "--minimized"],
+                env=env,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                start_new_session=True
+            )
+            for _ in range(15):
+                time.sleep(0.15)
+                if client.is_server_running():
+                    return True
+        except Exception:
+            pass
+
+    # 3. Fallback to headless daemon directly
     try:
         cmd = [sys.executable, "-m", "idm_ipc.daemon"]
         subprocess.Popen(
             cmd,
+            env=env,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             start_new_session=True
         )
-        for _ in range(10):
-            time.sleep(0.2)
+        for _ in range(15):
+            time.sleep(0.15)
             if client.is_server_running():
                 return True
     except Exception:
