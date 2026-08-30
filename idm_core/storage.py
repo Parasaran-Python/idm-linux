@@ -5,7 +5,7 @@ Storage Manager: Sparse File Allocation, Temporary Segment I/O, and Merging
 import hashlib
 import os
 import shutil
-from typing import List, Optional
+from typing import Any, List, Optional
 from idm_core.config import Config
 
 
@@ -19,14 +19,12 @@ class StorageManager:
         os.makedirs(os.path.dirname(os.path.abspath(filepath)), exist_ok=True)
         if total_bytes > 0:
             try:
-                # Fast allocation on Linux filesystems
                 with open(filepath, "wb") as f:
                     f.truncate(total_bytes)
             except Exception:
                 with open(filepath, "wb") as f:
-                    if total_bytes > 0:
-                        f.seek(total_bytes - 1)
-                        f.write(b"\0")
+                    f.seek(total_bytes - 1)
+                    f.write(b"\0")
         else:
             with open(filepath, "wb") as f:
                 pass
@@ -55,7 +53,7 @@ class StorageManager:
     def merge_segments(
         self,
         download_id: str,
-        segment_files: List[str],
+        segment_files: List[Any],
         destination_path: str,
         total_bytes: Optional[int] = None
     ) -> bool:
@@ -64,17 +62,27 @@ class StorageManager:
         temp_dest = destination_path + ".merging"
 
         with open(temp_dest, "wb") as outfile:
-            for seg_file in segment_files:
+            for item in segment_files:
+                if isinstance(item, tuple):
+                    seg_file, max_bytes = item
+                else:
+                    seg_file, max_bytes = item, None
+
                 if not os.path.exists(seg_file):
                     continue
-                with open(seg_file, "rb") as infile:
-                    shutil.copyfileobj(infile, outfile, length=1024 * 1024)
 
-        if total_bytes is not None and total_bytes > 0:
-            actual_size = os.path.getsize(temp_dest)
-            if actual_size != total_bytes:
-                # Log size mismatch warning, but still rename if close or stream
-                pass
+                with open(seg_file, "rb") as infile:
+                    if max_bytes is not None and max_bytes >= 0:
+                        remaining = max_bytes
+                        while remaining > 0:
+                            chunk_size = min(1024 * 1024, remaining)
+                            chunk = infile.read(chunk_size)
+                            if not chunk:
+                                break
+                            outfile.write(chunk)
+                            remaining -= len(chunk)
+                    else:
+                        shutil.copyfileobj(infile, outfile, length=1024 * 1024)
 
         if os.path.exists(destination_path):
             os.remove(destination_path)
