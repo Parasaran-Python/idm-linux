@@ -1,0 +1,66 @@
+import unittest
+import tempfile
+import os
+import shutil
+import time
+from idm_core.config import Config
+from idm_core.engine import DownloadEngine
+from idm_ipc.socket_server import IPCServer
+from idm_ipc.socket_client import IPCClient
+
+
+class TestIPC(unittest.TestCase):
+    def setUp(self):
+        self.test_dir = tempfile.mkdtemp()
+        self.sock_path = os.path.join(self.test_dir, "test_idm.sock")
+        self.config = Config(
+            config_dir=self.test_dir,
+            socket_path=self.sock_path,
+            database_path=os.path.join(self.test_dir, "ipc_test.db"),
+            temp_dir=os.path.join(self.test_dir, "temp"),
+            download_dir=os.path.join(self.test_dir, "Downloads"),
+        )
+        self.engine = DownloadEngine(self.config)
+        self.server = IPCServer(self.engine, self.sock_path)
+        self.server.start()
+        time.sleep(0.1)
+
+    def tearDown(self):
+        self.server.stop()
+        self.engine.shutdown()
+        shutil.rmtree(self.test_dir)
+
+    def test_ping_and_add_download_via_ipc(self):
+        client = IPCClient(self.sock_path)
+        self.assertTrue(client.is_server_running())
+
+        # Test Ping
+        pong = client.ping()
+        self.assertTrue(pong.get("pong", False))
+
+        # Test Add Download via IPC
+        res = client.send_request({
+            "action": "add_download",
+            "url": "https://example.com/test_ipc_file.zip",
+            "start_immediately": False
+        })
+        self.assertEqual(res.get("status"), "ok")
+        dl_id = res.get("download_id")
+        self.assertIsNotNone(dl_id)
+
+        # Test Get Download info
+        dl_info = client.send_request({
+            "action": "get_download",
+            "download_id": dl_id
+        })
+        self.assertEqual(dl_info.get("status"), "ok")
+        self.assertEqual(dl_info["download"]["url"], "https://example.com/test_ipc_file.zip")
+
+        # Test List Downloads
+        list_res = client.send_request({"action": "list_downloads"})
+        self.assertEqual(list_res.get("status"), "ok")
+        self.assertEqual(len(list_res["downloads"]), 1)
+
+
+if __name__ == "__main__":
+    unittest.main()
