@@ -113,7 +113,13 @@ class IPCServer:
 
             elif action in ["show_gui", "open_gui"]:
                 self.engine.notify("show_gui", {})
-                return {"status": "ok", "message": "GUI window raised"}
+            elif action == "query_media_formats":
+                url = msg.get("url")
+                if not url:
+                    return {"status": "error", "error": "URL is required"}
+                from idm_core.ytdlp_downloader import YTDLPDownloader
+                formats = YTDLPDownloader.extract_media_formats(url)
+                return {"status": "ok", "formats": formats}
 
             elif action in ["add_download", "intercept"]:
                 url = msg.get("url")
