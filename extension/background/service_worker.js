@@ -149,6 +149,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true;
   }
 
+  if (request.action === "open_idm_gui") {
+    sendNativeMessage({ action: "open_gui" }).then(sendResponse);
+    return true;
+  }
+
   if (request.action === "download_media") {
     sendNativeMessage({
       action: "add_download",

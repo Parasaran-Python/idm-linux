@@ -206,6 +206,13 @@ class MainWindow(QMainWindow):
         self.engine.register_listener("download_progress", self._on_engine_progress)
         self.engine.register_listener("segment_update", self._on_engine_segment_update)
         self.engine.register_listener("download_started", self._on_engine_download_started)
+        self.engine.register_listener("show_gui", self._on_engine_show_gui)
+
+    def _on_engine_show_gui(self, data: dict):
+        self.showNormal()
+        self.show()
+        self.raise_()
+        self.activateWindow()
 
     def _on_engine_download_started(self, data: dict):
         dl_id = data.get("download_id")

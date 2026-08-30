@@ -201,6 +201,12 @@
   setupNetworkSniffing();
   scanForPlayers();
 
+  // Polling fallback to ensure player detection across all SPAs
+  setInterval(scanForPlayers, 1500);
+  document.addEventListener("play", scanForPlayers, true);
+  document.addEventListener("playing", scanForPlayers, true);
+  document.addEventListener("loadedmetadata", scanForPlayers, true);
+
   // Watch DOM mutations and YouTube page transitions
   const observer = new MutationObserver(() => {
     scanForPlayers();
@@ -212,7 +218,7 @@
     panelAttached = false;
     const existing = document.getElementById("idm-floating-panel");
     if (existing) existing.remove();
-    setTimeout(scanForPlayers, 500);
+    setTimeout(scanForPlayers, 300);
   });
 
   // Extract all links command
