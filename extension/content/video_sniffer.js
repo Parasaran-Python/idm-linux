@@ -9,7 +9,6 @@
   // Prevent multiple injections
   if (window.__idm_sniffer_injected) return;
   window.__idm_sniffer_injected = true;
-  console.log("[IDM-SNIFFER] Content script active on:", window.location.href);
 
   const capturedStreams = new Map(); // url -> { title, format, type }
   let floatingBar = null;
@@ -24,6 +23,9 @@
 
     try {
       chrome.runtime.sendMessage({ action: "query_media_formats", url: currentUrl }, (response) => {
+        if (chrome.runtime.lastError) {
+          return;
+        }
         if (response && response.formats && response.formats.length > 0) {
           const fmts = response.formats;
           fmts.__fromBackend = true;
@@ -41,9 +43,10 @@
   }
 
   /**
-   * Inject Main-World Page Hook Script
+   * Inject Main-World Page Hook Script (Fallback for browsers without world: MAIN manifest support)
    */
   function injectPageHook() {
+    if (window.__idm_page_hook_injected) return;
     try {
       const script = document.createElement("script");
       script.src = chrome.runtime.getURL("content/page_hook.js");
@@ -118,7 +121,9 @@
       e.stopImmediatePropagation();
       e.preventDefault();
       userDismissed = true;
-      sessionStorage.setItem("__idm_dismissed_" + window.location.pathname, "true");
+      try {
+        sessionStorage.setItem("__idm_dismissed_" + window.location.pathname, "true");
+      } catch (err) {}
       container.style.display = "none";
       if (floatingBar) {
         floatingBar.remove();
@@ -214,14 +219,18 @@
             const ext = fmtLow === "mp3" || fmtLow === "audio" ? "mp3" : (fmtLow === "webm" ? "webm" : (fmtLow === "hls" || fmtLow === "dash" ? "mp4" : "mp4"));
             const filename = `${title}.${ext}`;
 
-            chrome.runtime.sendMessage({
-              action: "download_media",
-              url: item.url,
-              filename: filename,
-              quality: item.quality,
-              filesize: item.filesize || 0,
-              format: fmtLow
-            });
+            try {
+              chrome.runtime.sendMessage({
+                action: "download_media",
+                url: item.url,
+                filename: filename,
+                quality: item.quality,
+                filesize: item.filesize || 0,
+                format: fmtLow
+              }, () => {
+                if (chrome.runtime.lastError) { /* ignore */ }
+              });
+            } catch (err) {}
           });
         }
         menu.appendChild(row);
@@ -356,7 +365,14 @@
    * Position the floating bar over the active video element
    */
   function repositionBar() {
-    if (userDismissed || sessionStorage.getItem("__idm_dismissed_" + window.location.pathname) === "true") {
+    let isDismissed = userDismissed;
+    try {
+      if (sessionStorage.getItem("__idm_dismissed_" + window.location.pathname) === "true") {
+        isDismissed = true;
+      }
+    } catch (e) {}
+
+    if (isDismissed) {
       if (floatingBar) {
         floatingBar.remove();
         floatingBar = null;
@@ -435,7 +451,6 @@
     });
 
     const isWatch = isVideoWatchPage();
-    console.log("[IDM-SNIFFER] scanMediaElements, foundValid:", foundValid, "isWatch:", isWatch, "mediaEls:", mediaEls.length);
     if (!foundValid && !isWatch && capturedStreams.size === 0) {
       if (floatingBar) floatingBar.style.display = "none";
       return;
@@ -444,10 +459,29 @@
     repositionBar();
   }
 
+  // Debounced scan function for DOM Mutation Observer
+  let scanScheduled = false;
+  function scheduleScan() {
+    if (scanScheduled) return;
+    scanScheduled = true;
+    requestAnimationFrame(() => {
+      scanScheduled = false;
+      scanMediaElements();
+    });
+  }
+
   // 1. Listen to Page Hook Custom Events
   document.addEventListener("__idm_media_event", (e) => {
     if (e.detail && e.detail.url) {
       capturedStreams.set(e.detail.url, { format: e.detail.type || "Stream" });
+      try {
+        chrome.runtime.sendMessage({
+          action: "record_media_stream",
+          url: e.detail.url
+        }, () => {
+          if (chrome.runtime.lastError) { /* ignore */ }
+        });
+      } catch (err) {}
       repositionBar();
     }
   });
@@ -474,16 +508,16 @@
     }
   });
 
-  // 3. Initialize, Continuous Polling & DOM Mutation Observer
+  // 3. Initialize, Periodic Polling & Throttled DOM Mutation Observer
   scanMediaElements();
   document.addEventListener("DOMContentLoaded", scanMediaElements);
   window.addEventListener("load", scanMediaElements);
-  setInterval(scanMediaElements, 1000);
+  setInterval(scanMediaElements, 2000);
 
   // MutationObserver for instantaneous dynamic player detection
   try {
     const observer = new MutationObserver(() => {
-      scanMediaElements();
+      scheduleScan();
     });
     observer.observe(document.documentElement || document.body, {
       childList: true,
