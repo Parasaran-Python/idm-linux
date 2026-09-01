@@ -17,12 +17,13 @@
   let customPosition = null; // { x, y }
   const cachedFormatsForUrl = new Map();
 
-  function fetchFormatsForCurrentPage() {
+  function fetchFormatsForCurrentPage(targetUrl = null) {
     const currentUrl = window.location.href;
-    if (cachedFormatsForUrl.has(currentUrl) && cachedFormatsForUrl.get(currentUrl).__fromBackend) return;
+    const queryUrl = targetUrl || currentUrl;
+    if (cachedFormatsForUrl.has(queryUrl) && cachedFormatsForUrl.get(queryUrl).__fromBackend) return;
 
     try {
-      chrome.runtime.sendMessage({ action: "query_media_formats", url: currentUrl }, (response) => {
+      chrome.runtime.sendMessage({ action: "query_media_formats", url: queryUrl }, (response) => {
         if (chrome.runtime.lastError) {
           return;
         }
@@ -30,6 +31,7 @@
           const fmts = response.formats;
           fmts.__fromBackend = true;
           cachedFormatsForUrl.set(currentUrl, fmts);
+          cachedFormatsForUrl.set(queryUrl, fmts);
           if (floatingBar) {
             const openMenu = floatingBar.querySelector(".idm-grabber-menu.idm-menu-open");
             if (openMenu) {
@@ -533,7 +535,7 @@
       } catch (err) {}
       // Proactively fetch formats for DASH/HLS manifests to show all qualities
       if (e.detail.url.includes(".mpd") || e.detail.url.includes(".m3u8")) {
-        fetchFormatsForCurrentPage();
+        fetchFormatsForCurrentPage(e.detail.url);
       }
       repositionBar();
     }
@@ -559,7 +561,7 @@
       capturedStreams.set(msg.streamUrl, { format: msg.contentType || "Stream" });
       // Proactively fetch formats for DASH/HLS manifests to show all qualities
       if (msg.streamUrl.includes(".mpd") || msg.streamUrl.includes(".m3u8")) {
-        fetchFormatsForCurrentPage();
+        fetchFormatsForCurrentPage(msg.streamUrl);
       }
       repositionBar();
     }
