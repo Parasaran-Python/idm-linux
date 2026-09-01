@@ -1,10 +1,13 @@
 /**
  * IDM Linux - Main World Page Hook Script
- * Injected into the webpage context to capture HTML5 media element sources, fetch, and XHR media streams.
+ * Injected into the webpage main execution context to capture HTML5 media element sources, fetch, and XHR media streams.
  */
 
 (function () {
   "use strict";
+
+  if (window.__idm_page_hook_injected) return;
+  window.__idm_page_hook_injected = true;
 
   function reportMedia(url, type) {
     if (!url || typeof url !== "string") return;
@@ -23,6 +26,9 @@
       url.includes(".mp3") ||
       url.includes(".flv") ||
       url.includes(".ogg") ||
+      url.includes(".mkv") ||
+      url.includes(".aac") ||
+      url.includes(".opus") ||
       url.includes("mime=video") ||
       url.includes("mime=audio");
 
@@ -37,37 +43,55 @@
   }
 
   // 1. Hook HTMLMediaElement (video / audio)
-  const origPlay = HTMLMediaElement.prototype.play;
-  HTMLMediaElement.prototype.play = function () {
-    const src = this.currentSrc || this.src;
-    if (src) {
-      reportMedia(src, this.tagName.toLowerCase());
-    }
-    return origPlay.apply(this, arguments);
-  };
+  try {
+    const origPlay = HTMLMediaElement.prototype.play;
+    HTMLMediaElement.prototype.play = function () {
+      const src = this.currentSrc || this.src;
+      if (src) {
+        reportMedia(src, this.tagName.toLowerCase());
+      }
+      return origPlay.apply(this, arguments);
+    };
 
-  const origLoad = HTMLMediaElement.prototype.load;
-  HTMLMediaElement.prototype.load = function () {
-    const src = this.currentSrc || this.src;
-    if (src) {
-      reportMedia(src, this.tagName.toLowerCase());
-    }
-    return origLoad.apply(this, arguments);
-  };
+    const origLoad = HTMLMediaElement.prototype.load;
+    HTMLMediaElement.prototype.load = function () {
+      const src = this.currentSrc || this.src;
+      if (src) {
+        reportMedia(src, this.tagName.toLowerCase());
+      }
+      return origLoad.apply(this, arguments);
+    };
 
-  // Hook src setter
-  const srcPropDesc = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, "src");
-  if (srcPropDesc && srcPropDesc.set) {
-    const origSrcSet = srcPropDesc.set;
-    Object.defineProperty(HTMLMediaElement.prototype, "src", {
-      set: function (val) {
-        if (val) reportMedia(val, this.tagName.toLowerCase());
-        return origSrcSet.call(this, val);
-      },
-      get: srcPropDesc.get,
-      configurable: true
-    });
-  }
+    // Hook src setter on HTMLMediaElement
+    const srcPropDesc = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, "src");
+    if (srcPropDesc && srcPropDesc.set) {
+      const origSrcSet = srcPropDesc.set;
+      Object.defineProperty(HTMLMediaElement.prototype, "src", {
+        set: function (val) {
+          if (val) reportMedia(val, this.tagName.toLowerCase());
+          return origSrcSet.call(this, val);
+        },
+        get: srcPropDesc.get,
+        configurable: true
+      });
+    }
+
+    // Hook src setter on HTMLSourceElement
+    if (typeof HTMLSourceElement !== "undefined") {
+      const sourcePropDesc = Object.getOwnPropertyDescriptor(HTMLSourceElement.prototype, "src");
+      if (sourcePropDesc && sourcePropDesc.set) {
+        const origSourceSrcSet = sourcePropDesc.set;
+        Object.defineProperty(HTMLSourceElement.prototype, "src", {
+          set: function (val) {
+            if (val) reportMedia(val, "video");
+            return origSourceSrcSet.call(this, val);
+          },
+          get: sourcePropDesc.get,
+          configurable: true
+        });
+      }
+    }
+  } catch (e) {}
 
   // Scan existing media elements on load
   function scanExistingMedia() {
@@ -79,29 +103,34 @@
       });
     } catch (e) {}
   }
+
   scanExistingMedia();
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", scanExistingMedia);
   }
 
   // 2. Hook XHR
-  const origOpen = XMLHttpRequest.prototype.open;
-  XMLHttpRequest.prototype.open = function (method, url) {
-    if (typeof url === "string") {
-      reportMedia(url, "stream");
-    }
-    return origOpen.apply(this, arguments);
-  };
+  try {
+    const origOpen = XMLHttpRequest.prototype.open;
+    XMLHttpRequest.prototype.open = function (method, url) {
+      if (typeof url === "string") {
+        reportMedia(url, "stream");
+      }
+      return origOpen.apply(this, arguments);
+    };
+  } catch (e) {}
 
   // 3. Hook fetch
-  const origFetch = window.fetch;
-  window.fetch = function (input, init) {
-    const url = typeof input === "string" ? input : input ? input.url : "";
-    if (url) {
-      reportMedia(url, "stream");
-    }
-    return origFetch.apply(this, arguments);
-  };
+  try {
+    const origFetch = window.fetch;
+    window.fetch = function (input, init) {
+      const url = typeof input === "string" ? input : (input && input.href ? input.href : (input && input.url ? input.url : ""));
+      if (url) {
+        reportMedia(url, "stream");
+      }
+      return origFetch.apply(this, arguments);
+    };
+  } catch (e) {}
 
   // 4. In-page Player Format & Quality Discovery
   function extractVideoPlayerFormats() {
@@ -110,13 +139,21 @@
 
       // 4a. YouTube Player Quality Levels & StreamingData
       const ytPlayer = document.querySelector("#movie_player");
-      const ytResp = window.ytInitialPlayerResponse;
+      let ytResp = null;
+      if (ytPlayer && typeof ytPlayer.getPlayerResponse === "function") {
+        try {
+          ytResp = ytPlayer.getPlayerResponse();
+        } catch (e) {}
+      }
+      if (!ytResp) {
+        ytResp = window.ytInitialPlayerResponse;
+      }
 
       if (ytResp && ytResp.streamingData) {
         const formats = [];
         const adaptive = (ytResp.streamingData.adaptiveFormats || []).concat(ytResp.streamingData.formats || []);
         const durationSec = (ytResp.videoDetails && ytResp.videoDetails.lengthSeconds) ? parseInt(ytResp.videoDetails.lengthSeconds, 10) : 0;
-        
+
         let bestAudioSize = 0;
         for (const f of adaptive) {
           if (!f.height && (f.mimeType && f.mimeType.startsWith("audio/"))) {
@@ -223,5 +260,4 @@
   }
 
   setInterval(extractVideoPlayerFormats, 1000);
-
 })();

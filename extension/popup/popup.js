@@ -9,17 +9,18 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // 1. Check IDM connection status
   chrome.runtime.sendMessage({ action: "ping_idm" }, (res) => {
-    if (res && res.status === "ok") {
-      badge.textContent = "Connected";
-      badge.className = "badge badge-connected";
+    if (chrome.runtime.lastError || !res || res.status !== "ok") {
+      badge.textContent = "Disconnected";
+      badge.className = "badge badge-disconnected";
     } else {
-      badge.textContent = "Daemon Ready";
+      badge.textContent = "Connected";
       badge.className = "badge badge-connected";
     }
   });
 
   // 2. Load Settings
   chrome.runtime.sendMessage({ action: "get_settings" }, (res) => {
+    if (chrome.runtime.lastError) return;
     if (res && res.settings) {
       toggleIntercept.checked = !!res.settings.interceptDownloads;
       toggleSniffer.checked = !!res.settings.videoSniffer;
@@ -30,6 +31,8 @@ document.addEventListener("DOMContentLoaded", () => {
     chrome.runtime.sendMessage({
       action: "save_settings",
       settings: { interceptDownloads: toggleIntercept.checked }
+    }, () => {
+      if (chrome.runtime.lastError) { /* ignore */ }
     });
   });
 
@@ -37,10 +40,12 @@ document.addEventListener("DOMContentLoaded", () => {
     chrome.runtime.sendMessage({
       action: "save_settings",
       settings: { videoSniffer: toggleSniffer.checked }
+    }, () => {
+      if (chrome.runtime.lastError) { /* ignore */ }
     });
   });
 
-  // 3. Direct URL Download (No modal prompt clipping!)
+  // 3. Direct URL Download
   function submitDownload() {
     const url = inputUrl.value.trim();
     if (!url) {
@@ -50,7 +55,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     if (!url.startsWith("http://") && !url.startsWith("https://") && !url.startsWith("ftp://")) {
-      feedback.textContent = "⚠️ URL must begin with http:// or https://";
+      feedback.textContent = "⚠️ URL must begin with http://, https://, or ftp://";
       feedback.className = "feedback-msg error";
       return;
     }
@@ -60,8 +65,14 @@ document.addEventListener("DOMContentLoaded", () => {
 
     chrome.runtime.sendMessage({
       action: "download_media",
-      url: url
+      url: url,
+      page_url: url
     }, (res) => {
+      if (chrome.runtime.lastError) {
+        feedback.textContent = `❌ ${chrome.runtime.lastError.message || "Failed to communicate with extension."}`;
+        feedback.className = "feedback-msg error";
+        return;
+      }
       if (res && res.status === "ok") {
         feedback.textContent = "✅ Download started in IDM!";
         feedback.className = "feedback-msg success";
@@ -85,9 +96,11 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // 4. Detected Active Tab Media Streams
   chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+    if (chrome.runtime.lastError) return;
     if (tabs && tabs[0] && tabs[0].id) {
       const activeTab = tabs[0];
       chrome.runtime.sendMessage({ action: "get_tab_media", tabId: activeTab.id }, (res) => {
+        if (chrome.runtime.lastError) return;
         if (res && res.streams && res.streams.length > 0) {
           const mediaCard = document.getElementById("media-card");
           const mediaList = document.getElementById("media-list");
@@ -106,7 +119,7 @@ document.addEventListener("DOMContentLoaded", () => {
               else if (streamUrl.includes(".webm")) { label = "Direct WebM Video"; badge = "WEBM"; }
               else if (streamUrl.includes(".mp3") || streamUrl.includes(".m4a")) { label = "Audio Stream"; badge = "MP3"; }
               else if (streamUrl.includes("youtube.com") || streamUrl.includes("youtu.be")) { label = "YouTube Video"; badge = "YOUTUBE"; }
-              
+
               const item = document.createElement("div");
               item.className = "media-item";
               item.title = streamUrl;
@@ -117,9 +130,11 @@ document.addEventListener("DOMContentLoaded", () => {
                 chrome.runtime.sendMessage({
                   action: "download_media",
                   url: streamUrl,
+                  page_url: activeTab.url || "",
                   filename: `${title}.${ext}`,
                   quality: "best"
                 }, () => {
+                  if (chrome.runtime.lastError) { /* ignore */ }
                   window.close();
                 });
               });
@@ -133,6 +148,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // 5. Open Desktop Application
   btnOpenGui.addEventListener("click", () => {
-    chrome.runtime.sendMessage({ action: "open_idm_gui" });
+    chrome.runtime.sendMessage({ action: "open_idm_gui" }, () => {
+      if (chrome.runtime.lastError) { /* ignore */ }
+    });
   });
 });
