@@ -30,10 +30,17 @@ class StorageManager:
                 pass
         return filepath
 
+    def get_temp_dir(self, download_id: Optional[str] = None) -> str:
+        """Return the temporary folder for a download or base temp directory."""
+        if download_id:
+            temp_dl_dir = os.path.join(self.config.temp_dir, download_id)
+            os.makedirs(temp_dl_dir, exist_ok=True)
+            return temp_dl_dir
+        return self.config.temp_dir
+
     def get_temp_segment_path(self, download_id: str, segment_idx: int) -> str:
         """Return the temporary path for a specific segment."""
-        temp_dl_dir = os.path.join(self.config.temp_dir, download_id)
-        os.makedirs(temp_dl_dir, exist_ok=True)
+        temp_dl_dir = self.get_temp_dir(download_id)
         return os.path.join(temp_dl_dir, f"seg_{segment_idx}.part")
 
     def write_segment_chunk(self, temp_path: str, offset: int, data: bytes):

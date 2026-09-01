@@ -117,8 +117,22 @@ class IPCServer:
                 url = msg.get("url")
                 if not url:
                     return {"status": "error", "error": "URL is required"}
+                
+                # If direct DASH/HLS stream manifest, extract formats directly (fast-path)
+                from idm_core.stream_downloader import StreamDownloader
+                if StreamDownloader.detect_stream_type(url) in ["dash", "hls"]:
+                    formats = StreamDownloader.extract_formats(url)
+                    if formats:
+                        return {"status": "ok", "formats": formats}
+
+                # Try yt-dlp for known video platforms (YouTube, Vimeo, etc.)
                 from idm_core.ytdlp_downloader import YTDLPDownloader
                 formats = YTDLPDownloader.extract_media_formats(url)
+                
+                # Fallback to StreamDownloader if yt-dlp returns no formats
+                if not formats:
+                    formats = StreamDownloader.extract_formats(url)
+                
                 return {"status": "ok", "formats": formats}
 
             elif action in ["add_download", "intercept"]:

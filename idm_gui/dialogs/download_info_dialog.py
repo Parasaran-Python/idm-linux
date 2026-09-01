@@ -54,10 +54,10 @@ class ProbeWorker(QObject):
                     self.probed.emit(size, filename)
                 return
 
-            # 2. HLS Video Stream URLs (.m3u8)
-            if ".m3u8" in self.url.lower():
-                from idm_core.stream_downloader import HLSParser
-                info = HLSParser.probe_stream_info(self.url, headers=self.headers)
+            # 2. HLS & DASH Video Stream URLs (.m3u8, .mpd)
+            if ".m3u8" in self.url.lower() or ".mpd" in self.url.lower():
+                from idm_core.stream_downloader import StreamDownloader
+                info = StreamDownloader.probe_stream_info(self.url, headers=self.headers)
                 size = info.get("filesize", 0)
                 if size > 0:
                     self.probed.emit(size, "")
