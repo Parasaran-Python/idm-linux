@@ -117,8 +117,16 @@ class IPCServer:
                 url = msg.get("url")
                 if not url:
                     return {"status": "error", "error": "URL is required"}
+                
+                # First try yt-dlp for known video platforms
                 from idm_core.ytdlp_downloader import YTDLPDownloader
                 formats = YTDLPDownloader.extract_media_formats(url)
+                
+                # If yt-dlp returns no formats (e.g., generic DASH/HLS URL), try StreamDownloader
+                if not formats:
+                    from idm_core.stream_downloader import StreamDownloader
+                    formats = StreamDownloader.extract_formats(url)
+                
                 return {"status": "ok", "formats": formats}
 
             elif action in ["add_download", "intercept"]:

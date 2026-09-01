@@ -253,7 +253,14 @@ if (chrome.webRequest && chrome.webRequest.onHeadersReceived) {
           contentType.startsWith("video/") ||
           contentType.startsWith("audio/") ||
           contentType.includes("mpegurl") ||
-          contentType.includes("dash+xml");
+          contentType.includes("dash+xml") ||
+          contentType.includes("vnd.apple.mpegurl") ||
+          contentType.includes("x-mpegurl") ||
+          contentType.includes("mp2t") ||
+          contentType.includes("matroska") ||
+          contentType.includes("flv") ||
+          contentType.includes("ogg") ||
+          contentType.includes("octet-stream");
 
         const isMediaUrl =
           url.includes(".m3u8") ||
@@ -262,7 +269,14 @@ if (chrome.webRequest && chrome.webRequest.onHeadersReceived) {
           url.includes(".mp4") ||
           url.includes(".webm") ||
           url.includes(".m4a") ||
-          url.includes(".mp3");
+          url.includes(".mp3") ||
+          url.includes(".mkv") ||
+          url.includes(".flv") ||
+          url.includes(".ogg") ||
+          url.includes(".opus") ||
+          url.includes(".aac") ||
+          url.includes(".ts") ||
+          url.includes(".m4s");
 
         if (isMediaMime || isMediaUrl) {
           const mediaSet = await getTabMediaStore(details.tabId);

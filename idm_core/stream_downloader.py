@@ -127,6 +127,115 @@ class HLSParser:
         except Exception:
             return {"duration": 0, "bandwidth": 0, "filesize": 0}
 
+    @classmethod
+    def extract_formats(cls, m3u8_url: str, headers: Optional[Dict[str, str]] = None) -> List[Dict[str, Any]]:
+        """Extract all available video variants from an HLS master playlist."""
+        try:
+            parser = cls(m3u8_url, headers=headers)
+            content = parser._fetch_text(m3u8_url)
+            lines = [line.strip() for line in content.splitlines() if line.strip()]
+
+            formats = []
+            seen_heights = set()
+
+            if any(line.startswith("#EXT-X-STREAM-INF") for line in lines):
+                # Master playlist - extract all variants
+                for i, line in enumerate(lines):
+                    if line.startswith("#EXT-X-STREAM-INF"):
+                        bandwidth_match = re.search(r"BANDWIDTH=(\d+)", line)
+                        bw = int(bandwidth_match.group(1)) if bandwidth_match else 0
+
+                        resolution_match = re.search(r"RESOLUTION=(\d+)x(\d+)", line)
+                        width = int(resolution_match.group(1)) if resolution_match else 0
+                        height = int(resolution_match.group(2)) if resolution_match else 0
+
+                        fps = 30
+                        fps_match = re.search(r"FRAME-RATE=([\d.]+)", line)
+                        if fps_match:
+                            try:
+                                fps = float(fps_match.group(1))
+                            except Exception:
+                                pass
+
+                        if i + 1 < len(lines) and not lines[i + 1].startswith("#"):
+                            variant_url = parser._resolve_url(m3u8_url, lines[i + 1])
+
+                            if height and height not in seen_heights:
+                                seen_heights.add(height)
+                                label = f"{height}p"
+                                if fps and fps > 30:
+                                    label += f" {int(fps)}fps"
+                                if height >= 4320:
+                                    label += " (8K Ultra HD)"
+                                elif height >= 2160:
+                                    label += " (4K Ultra HD)"
+                                elif height >= 1440:
+                                    label += " (2K Quad HD)"
+                                elif height >= 1080:
+                                    label += " (Full HD)"
+                                elif height >= 720:
+                                    label += " (HD)"
+                                else:
+                                    label += " (SD)"
+
+                                # Estimate duration from variant if possible
+                                duration = 0.0
+                                try:
+                                    variant_content = parser._fetch_text(variant_url)
+                                    variant_lines = [l.strip() for l in variant_content.splitlines() if l.strip()]
+                                    for vl in variant_lines:
+                                        if vl.startswith("#EXTINF:"):
+                                            match = re.search(r"#EXTINF:([\d.]+)", vl)
+                                            if match:
+                                                duration += float(match.group(1))
+                                except Exception:
+                                    pass
+
+                                fmt = {
+                                    "label": label,
+                                    "height": height,
+                                    "width": width,
+                                    "fps": fps,
+                                    "bandwidth": bw,
+                                    "quality": str(height),
+                                    "format": "MP4",
+                                    "filesize": int((bw / 8) * duration) if duration > 0 else 0,
+                                    "url": m3u8_url,
+                                    "mime": "video/mp2t",
+                                    "lang": "",
+                                    "roles": []
+                                }
+                                formats.append(fmt)
+            else:
+                # Media playlist - single quality
+                total_duration = 0.0
+                for line in lines:
+                    if line.startswith("#EXTINF:"):
+                        match = re.search(r"#EXTINF:([\d.]+)", line)
+                        if match:
+                            total_duration += float(match.group(1))
+
+                fmt = {
+                    "label": "Best Quality",
+                    "height": 0,
+                    "width": 0,
+                    "fps": 0,
+                    "bandwidth": 0,
+                    "quality": "best",
+                    "format": "MP4",
+                    "filesize": 0,
+                    "url": m3u8_url,
+                    "mime": "video/mp2t",
+                    "lang": "",
+                    "roles": []
+                }
+                formats.append(fmt)
+
+            formats.sort(key=lambda x: x.get("height", 0), reverse=True)
+            return formats
+        except Exception:
+            return []
+
 
 class DASHParser:
     def __init__(self, mpd_url: str, headers: Optional[Dict[str, str]] = None):
@@ -450,6 +559,130 @@ class DASHParser:
         except Exception:
             return {"duration": 0, "bandwidth": 0, "filesize": 0}
 
+    @classmethod
+    def extract_formats(cls, mpd_url: str, headers: Optional[Dict[str, str]] = None) -> List[Dict[str, Any]]:
+        """Extract all available video and audio representations from a DASH manifest."""
+        try:
+            parser = cls(mpd_url, headers=headers)
+            content = parser._fetch_text(mpd_url)
+            root = ET.fromstring(content.encode("utf-8"))
+            total_duration = parser.parse_iso8601_duration(root.attrib.get("mediaPresentationDuration", ""))
+
+            base_url = mpd_url
+            for child in root:
+                if parser._local_tag(child) == "BaseURL" and child.text:
+                    base_url = parser._resolve_url(base_url, child.text.strip())
+
+            periods = [elem for elem in root if parser._local_tag(elem) == "Period"]
+            if not periods:
+                periods = [root]
+
+            formats = []
+            seen_heights = set()
+
+            for period in periods:
+                period_duration_str = period.attrib.get("duration", "")
+                period_duration = parser.parse_iso8601_duration(period_duration_str) if period_duration_str else total_duration
+                p_base_url = base_url
+                for child in period:
+                    if parser._local_tag(child) == "BaseURL" and child.text:
+                        p_base_url = parser._resolve_url(p_base_url, child.text.strip())
+
+                period_tmpl = next((elem for elem in period if parser._local_tag(elem) == "SegmentTemplate"), None)
+
+                adaptations = [elem for elem in period if parser._local_tag(elem) == "AdaptationSet"]
+                for ad in adaptations:
+                    mime = ad.attrib.get("mimeType", "").lower()
+                    c_type = ad.attrib.get("contentType", "").lower()
+                    lang = ad.attrib.get("lang", "")
+                    ad_base = p_base_url
+                    for child in ad:
+                        if parser._local_tag(child) == "BaseURL" and child.text:
+                            ad_base = parser._resolve_url(ad_base, child.text.strip())
+
+                    ad_tmpl = next((elem for elem in ad if parser._local_tag(elem) == "SegmentTemplate"), period_tmpl)
+                    ad_list = next((elem for elem in ad if parser._local_tag(elem) == "SegmentList"), None)
+                    roles = [c.attrib.get("value", "") for c in ad if parser._local_tag(c) == "Role"]
+
+                    reps = [r for r in ad if parser._local_tag(r) == "Representation"]
+                    is_video = mime.startswith("video") or c_type == "video" or any(r.attrib.get("width") for r in reps)
+                    is_audio = mime.startswith("audio") or c_type == "audio" or any(r.attrib.get("audioSamplingRate") for r in reps)
+
+                    if is_video:
+                        for rep in reps:
+                            height = rep.attrib.get("height")
+                            width = rep.attrib.get("width")
+                            bw = int(rep.attrib.get("bandwidth", 0))
+                            if height and height not in seen_heights:
+                                seen_heights.add(height)
+                                h = int(height)
+                                fps = 30
+                                if "frameRate" in rep.attrib:
+                                    try:
+                                        fps = float(rep.attrib["frameRate"])
+                                    except Exception:
+                                        pass
+
+                                label = f"{h}p"
+                                if fps and fps > 30:
+                                    label += f" {int(fps)}fps"
+                                if h >= 4320:
+                                    label += " (8K Ultra HD)"
+                                elif h >= 2160:
+                                    label += " (4K Ultra HD)"
+                                elif h >= 1440:
+                                    label += " (2K Quad HD)"
+                                elif h >= 1080:
+                                    label += " (Full HD)"
+                                elif h >= 720:
+                                    label += " (HD)"
+                                else:
+                                    label += " (SD)"
+
+                                fmt = {
+                                    "label": label,
+                                    "height": h,
+                                    "width": int(width) if width else 0,
+                                    "fps": fps,
+                                    "bandwidth": bw,
+                                    "quality": str(h),
+                                    "format": "MP4",
+                                    "filesize": int((bw / 8) * period_duration) if period_duration > 0 else 0,
+                                    "url": mpd_url,
+                                    "mime": mime,
+                                    "lang": lang,
+                                    "roles": roles
+                                }
+                                formats.append(fmt)
+                    elif is_audio:
+                        for rep in reps:
+                            bw = int(rep.attrib.get("bandwidth", 0))
+                            sample_rate = rep.attrib.get("audioSamplingRate")
+                            audio_ch = rep.attrib.get("audioChannels", "2")
+                            label = "Audio Only"
+                            if lang:
+                                label += f" ({lang})"
+                            fmt = {
+                                "label": label,
+                                "height": 0,
+                                "width": 0,
+                                "fps": 0,
+                                "bandwidth": bw,
+                                "quality": "audio",
+                                "format": "MP3",
+                                "filesize": int((bw / 8) * period_duration) if period_duration > 0 else 0,
+                                "url": mpd_url,
+                                "mime": mime,
+                                "lang": lang,
+                                "roles": roles
+                            }
+                            formats.append(fmt)
+
+            formats.sort(key=lambda x: (x["height"], x.get("fps", 0)), reverse=True)
+            return formats
+        except Exception:
+            return []
+
 
 class StreamDownloader:
     def __init__(
@@ -526,6 +759,14 @@ class StreamDownloader:
         if stype == "dash":
             return DASHParser.probe_stream_info(url, headers=headers)
         return HLSParser.probe_stream_info(url, headers=headers)
+
+    @classmethod
+    def extract_formats(cls, url: str, headers: Optional[Dict[str, str]] = None) -> List[Dict[str, Any]]:
+        """Extract all available video and audio formats for HLS or DASH manifests."""
+        stype = cls.detect_stream_type(url)
+        if stype == "dash":
+            return DASHParser.extract_formats(url, headers=headers)
+        return HLSParser.extract_formats(url, headers=headers)
 
     def log(self, msg: str):
         if self.on_log:
