@@ -76,6 +76,8 @@ class DownloadEngine:
         if not filename:
             path_part = urllib.parse.urlparse(url).path
             filename = os.path.basename(path_part) or "download"
+            if filename.endswith(".m3u8") or filename.endswith(".mpd"):
+                filename = os.path.splitext(filename)[0] + ".mp4"
 
         # Categorize
         if not category or category == "General":
