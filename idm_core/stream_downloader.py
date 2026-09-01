@@ -25,7 +25,9 @@ class HLSParser:
         self.key_info = None  # Method, URI, IV
 
     def _resolve_url(self, base_url: str, relative_url: str) -> str:
-        joined = urllib.parse.urljoin(base_url, relative_url)
+        base_clean = (base_url or "").strip()
+        rel_clean = (relative_url or "").strip()
+        joined = urllib.parse.urljoin(base_clean, rel_clean)
         parsed_src = urllib.parse.urlparse(self.m3u8_url)
         parsed_joined = urllib.parse.urlparse(joined)
         if parsed_src.query and not parsed_joined.query:
@@ -239,7 +241,9 @@ class DASHParser:
 
     def _resolve_url(self, base_url: str, relative_url: str) -> str:
         """Resolve a relative URL against base_url while preserving authentication query parameters."""
-        joined = urllib.parse.urljoin(base_url, relative_url)
+        base_clean = (base_url or "").strip()
+        rel_clean = (relative_url or "").strip()
+        joined = urllib.parse.urljoin(base_clean, rel_clean)
         mpd_parsed = urllib.parse.urlparse(self.mpd_url)
         joined_parsed = urllib.parse.urlparse(joined)
         if mpd_parsed.query and not joined_parsed.query:
@@ -746,9 +750,13 @@ class StreamDownloader:
                 except Exception as e:
                     self.log(f"ffmpeg remux failed ({e}), falling back to direct stream output.")
                     if raw_ts_path != self.save_path and os.path.exists(raw_ts_path):
-                        os.rename(raw_ts_path, self.save_path)
+                        if os.path.exists(self.save_path):
+                            os.remove(self.save_path)
+                        shutil.move(raw_ts_path, self.save_path)
             elif raw_ts_path != self.save_path and os.path.exists(raw_ts_path):
-                os.rename(raw_ts_path, self.save_path)
+                if os.path.exists(self.save_path):
+                    os.remove(self.save_path)
+                shutil.move(raw_ts_path, self.save_path)
 
         self.storage.cleanup_temp(self.download_id)
         self.status = "completed"
