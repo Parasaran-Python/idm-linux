@@ -55,7 +55,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     if (!url.startsWith("http://") && !url.startsWith("https://") && !url.startsWith("ftp://")) {
-      feedback.textContent = "⚠️ URL must begin with http:// or https://";
+      feedback.textContent = "⚠️ URL must begin with http://, https://, or ftp://";
       feedback.className = "feedback-msg error";
       return;
     }
@@ -65,7 +65,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
     chrome.runtime.sendMessage({
       action: "download_media",
-      url: url
+      url: url,
+      page_url: url
     }, (res) => {
       if (chrome.runtime.lastError) {
         feedback.textContent = `❌ ${chrome.runtime.lastError.message || "Failed to communicate with extension."}`;
@@ -129,6 +130,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 chrome.runtime.sendMessage({
                   action: "download_media",
                   url: streamUrl,
+                  page_url: activeTab.url || "",
                   filename: `${title}.${ext}`,
                   quality: "best"
                 }, () => {

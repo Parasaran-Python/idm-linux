@@ -338,6 +338,13 @@ async function handleDownloadIntercept(downloadItem, suggest = null) {
     return;
   }
 
+  // Only intercept standard network protocols (skip blob:, data:, filesystem:, chrome:, etc.)
+  const itemUrl = (downloadItem.url || "").toLowerCase();
+  if (!itemUrl.startsWith("http://") && !itemUrl.startsWith("https://") && !itemUrl.startsWith("ftp://")) {
+    if (suggest) suggest();
+    return;
+  }
+
   // Avoid recursive loops or duplicate processing
   if (interceptedDownloadIds.has(downloadItem.id)) {
     if (suggest) suggest();
@@ -449,7 +456,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
   if (request.action === "download_media") {
     (async () => {
-      const pageUrl = sender.tab && sender.tab.url ? sender.tab.url : "";
+      const pageUrl = (sender.tab && sender.tab.url) ? sender.tab.url : (request.page_url || request.referer || "");
       const headers = await buildDownloadHeaders(request.url, pageUrl);
       if (request.quality) {
         headers["quality"] = request.quality;
