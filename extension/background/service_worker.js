@@ -138,19 +138,27 @@ async function getCookiesForUrl(url) {
  * Build rich request headers matching the browser session
  */
 async function buildDownloadHeaders(targetUrl, refererUrl = "") {
-  const cookieStr = await getCookiesForUrl(targetUrl);
-  const headers = {
-    "User-Agent": navigator.userAgent,
-    "Accept": "*/*",
-    "Accept-Language": navigator.language || "en-US,en;q=0.9",
-  };
-  if (refererUrl && (refererUrl.startsWith("http://") || refererUrl.startsWith("https://"))) {
-    headers["Referer"] = refererUrl;
+  try {
+    const cookieStr = await getCookiesForUrl(targetUrl);
+    const headers = {
+      "User-Agent": navigator.userAgent || "",
+      "Accept": "*/*",
+      "Accept-Language": navigator.language || "en-US,en;q=0.9",
+    };
+    if (refererUrl && (refererUrl.startsWith("http://") || refererUrl.startsWith("https://"))) {
+      headers["Referer"] = refererUrl;
+    }
+    if (cookieStr) {
+      headers["Cookie"] = cookieStr;
+    }
+    return headers;
+  } catch (e) {
+    return {
+      "User-Agent": navigator.userAgent || "",
+      "Accept": "*/*",
+      "Accept-Language": navigator.language || "en-US,en;q=0.9",
+    };
   }
-  if (cookieStr) {
-    headers["Cookie"] = cookieStr;
-  }
-  return headers;
 }
 
 /**
@@ -180,73 +188,77 @@ function sendNativeMessage(payload) {
 if (chrome.webRequest && chrome.webRequest.onHeadersReceived) {
   chrome.webRequest.onHeadersReceived.addListener(
     async (details) => {
-      const currentSettings = await getSettings();
-      if (!currentSettings.videoSniffer || details.tabId < 0) return;
+      try {
+        const currentSettings = await getSettings();
+        if (!currentSettings.videoSniffer || details.tabId < 0) return;
 
-      const url = details.url || "";
-      const headers = details.responseHeaders || [];
-      let contentType = "";
-      let contentLength = 0;
+        const url = details.url || "";
+        const headers = details.responseHeaders || [];
+        let contentType = "";
+        let contentLength = 0;
 
-      for (const h of headers) {
-        const name = (h.name || "").toLowerCase();
-        if (name === "content-type") {
-          contentType = (h.value || "").toLowerCase();
-        } else if (name === "content-length") {
-          contentLength = parseInt(h.value, 10) || 0;
+        for (const h of headers) {
+          const name = (h.name || "").toLowerCase();
+          if (name === "content-type") {
+            contentType = (h.value || "").toLowerCase();
+          } else if (name === "content-length") {
+            contentLength = parseInt(h.value, 10) || 0;
+          }
         }
-      }
 
-      const isMediaMime =
-        contentType.startsWith("video/") ||
-        contentType.startsWith("audio/") ||
-        contentType.includes("mpegurl") ||
-        contentType.includes("dash+xml");
+        const isMediaMime =
+          contentType.startsWith("video/") ||
+          contentType.startsWith("audio/") ||
+          contentType.includes("mpegurl") ||
+          contentType.includes("dash+xml");
 
-      const isMediaUrl =
-        url.includes(".m3u8") ||
-        url.includes(".mpd") ||
-        url.includes("videoplayback") ||
-        url.includes(".mp4") ||
-        url.includes(".webm") ||
-        url.includes(".ts") ||
-        url.includes(".m4s") ||
-        url.includes(".m4a") ||
-        url.includes(".mp3");
+        const isMediaUrl =
+          url.includes(".m3u8") ||
+          url.includes(".mpd") ||
+          url.includes("videoplayback") ||
+          url.includes(".mp4") ||
+          url.includes(".webm") ||
+          url.includes(".ts") ||
+          url.includes(".m4s") ||
+          url.includes(".m4a") ||
+          url.includes(".mp3");
 
-      if (isMediaMime || isMediaUrl) {
-        const mediaSet = await getTabMediaStore(details.tabId);
-        if (!mediaSet.has(url)) {
-          mediaSet.add(url);
-          await saveTabMediaStore(details.tabId, mediaSet);
+        if (isMediaMime || isMediaUrl) {
+          const mediaSet = await getTabMediaStore(details.tabId);
+          if (!mediaSet.has(url)) {
+            mediaSet.add(url);
+            await saveTabMediaStore(details.tabId, mediaSet);
 
-          // Update badge
-          const actionApi = chrome.action || chrome.browserAction;
-          if (actionApi && actionApi.setBadgeText) {
-            try {
-              actionApi.setBadgeText({
-                text: String(mediaSet.size),
-                tabId: details.tabId
-              });
-              if (actionApi.setBadgeBackgroundColor) {
-                actionApi.setBadgeBackgroundColor({
-                  color: "#2b6cb0",
+            // Update badge
+            const actionApi = chrome.action || chrome.browserAction;
+            if (actionApi && actionApi.setBadgeText) {
+              try {
+                actionApi.setBadgeText({
+                  text: String(mediaSet.size),
                   tabId: details.tabId
                 });
-              }
-            } catch (e) {}
-          }
+                if (actionApi.setBadgeBackgroundColor) {
+                  actionApi.setBadgeBackgroundColor({
+                    color: "#2b6cb0",
+                    tabId: details.tabId
+                  });
+                }
+              } catch (e) {}
+            }
 
-          // Notify content script in the active tab
-          if (chrome.tabs && chrome.tabs.sendMessage) {
-            chrome.tabs.sendMessage(details.tabId, {
-              action: "idm_media_detected",
-              streamUrl: url,
-              contentType: contentType,
-              size: contentLength
-            }).catch(() => {});
+            // Notify content script in the active tab
+            if (chrome.tabs && chrome.tabs.sendMessage) {
+              chrome.tabs.sendMessage(details.tabId, {
+                action: "idm_media_detected",
+                streamUrl: url,
+                contentType: contentType,
+                size: contentLength
+              }).catch(() => {});
+            }
           }
         }
+      } catch (err) {
+        console.error("[IDM Extension] webRequest handler error:", err);
       }
     },
     { urls: ["<all_urls>"] },
@@ -292,36 +304,40 @@ chrome.runtime.onStartup.addListener(() => {
 
 if (chrome.contextMenus && chrome.contextMenus.onClicked) {
   chrome.contextMenus.onClicked.addListener(async (info, tab) => {
-    const refererUrl = tab && tab.url ? tab.url : "";
-    if (info.menuItemId === "idm_download_link") {
-      const targetUrl = info.linkUrl || info.srcUrl || info.pageUrl;
-      if (targetUrl) {
-        const headers = await buildDownloadHeaders(targetUrl, refererUrl);
-        sendNativeMessage({
-          action: "add_download",
-          url: targetUrl,
-          headers: headers,
-          start_immediately: true
-        });
-      }
-    } else if (info.menuItemId === "idm_download_all") {
-      if (tab && tab.id) {
-        chrome.tabs.sendMessage(tab.id, { action: "extract_all_links" }, async (response) => {
-          if (chrome.runtime.lastError) return;
-          if (response && response.links && response.links.length > 0) {
-            for (const link of response.links) {
-              const headers = await buildDownloadHeaders(link.url, refererUrl);
-              sendNativeMessage({
-                action: "add_download",
-                url: link.url,
-                filename: link.text || null,
-                headers: headers,
-                start_immediately: false
-              });
+    try {
+      const refererUrl = tab && tab.url ? tab.url : "";
+      if (info.menuItemId === "idm_download_link") {
+        const targetUrl = info.linkUrl || info.srcUrl || info.pageUrl;
+        if (targetUrl) {
+          const headers = await buildDownloadHeaders(targetUrl, refererUrl);
+          sendNativeMessage({
+            action: "add_download",
+            url: targetUrl,
+            headers: headers,
+            start_immediately: true
+          });
+        }
+      } else if (info.menuItemId === "idm_download_all") {
+        if (tab && tab.id) {
+          chrome.tabs.sendMessage(tab.id, { action: "extract_all_links" }, async (response) => {
+            if (chrome.runtime.lastError) return;
+            if (response && response.links && response.links.length > 0) {
+              for (const link of response.links) {
+                const headers = await buildDownloadHeaders(link.url, refererUrl);
+                sendNativeMessage({
+                  action: "add_download",
+                  url: link.url,
+                  filename: link.text || null,
+                  headers: headers,
+                  start_immediately: false
+                });
+              }
             }
-          }
-        });
+          });
+        }
       }
+    } catch (err) {
+      console.error("[IDM Extension] Context menu click error:", err);
     }
   });
 }
@@ -332,77 +348,84 @@ if (chrome.contextMenus && chrome.contextMenus.onClicked) {
 const interceptedDownloadIds = new Set();
 
 async function handleDownloadIntercept(downloadItem, suggest = null) {
-  const currentSettings = await getSettings();
-  if (!currentSettings.interceptDownloads || !downloadItem || !downloadItem.url) {
-    if (suggest) suggest();
-    return;
-  }
-
-  // Only intercept standard network protocols (skip blob:, data:, filesystem:, chrome:, etc.)
-  const itemUrl = (downloadItem.url || "").toLowerCase();
-  if (!itemUrl.startsWith("http://") && !itemUrl.startsWith("https://") && !itemUrl.startsWith("ftp://")) {
-    if (suggest) suggest();
-    return;
-  }
-
-  // Avoid recursive loops or duplicate processing
-  if (interceptedDownloadIds.has(downloadItem.id)) {
-    if (suggest) suggest();
-    return;
-  }
-
-  const rawFilename = downloadItem.filename || "";
-  const filename = rawFilename.split(/[/\\]/).pop() || "";
-  const ext = filename.includes(".") ? filename.split(".").pop().toLowerCase() : "";
-
-  // If extension is in ignore list, do not intercept
-  if (ext && currentSettings.ignoreExtensions.includes(ext)) {
-    if (suggest) suggest();
-    return;
-  }
-
-  // Check if matches target extensions or binary media MIME types
-  const mime = (downloadItem.mime || "").toLowerCase();
-  const isTargetExt = ext && currentSettings.interceptExtensions.includes(ext);
-  const isBinaryMime = mime.startsWith("video/") || mime.startsWith("audio/") ||
-                       mime.includes("zip") || mime.includes("octet-stream") ||
-                       mime.includes("pdf") || mime.includes("tar") || mime.includes("gzip");
-
-  // In Chrome/onDeterminingFilename, if neither target extension nor binary mime, do not intercept
-  const isGenericOrTarget = isTargetExt || isBinaryMime || (!ext && filename.length === 0);
-
-  if (isGenericOrTarget && (isTargetExt || isBinaryMime || !suggest)) {
-    interceptedDownloadIds.add(downloadItem.id);
-
-    // Cancel native browser download
-    if (chrome.downloads && chrome.downloads.cancel) {
-      try {
-        chrome.downloads.cancel(downloadItem.id, () => {
-          if (chrome.runtime.lastError) { /* ignore */ }
-          if (chrome.downloads.erase) {
-            chrome.downloads.erase({ id: downloadItem.id }, () => {
-              if (chrome.runtime.lastError) { /* ignore */ }
-            });
-          }
-        });
-      } catch (e) {}
+  try {
+    const currentSettings = await getSettings();
+    if (!currentSettings.interceptDownloads || !downloadItem || !downloadItem.url) {
+      if (suggest) suggest();
+      return;
     }
 
-    if (suggest) {
-      suggest();
+    // Only intercept standard network protocols (skip blob:, data:, filesystem:, chrome:, etc.)
+    const itemUrl = (downloadItem.url || "").toLowerCase();
+    if (!itemUrl.startsWith("http://") && !itemUrl.startsWith("https://") && !itemUrl.startsWith("ftp://")) {
+      if (suggest) suggest();
+      return;
     }
 
-    const headers = await buildDownloadHeaders(downloadItem.url, downloadItem.referrer || downloadItem.url);
+    // Avoid recursive loops or duplicate processing
+    if (interceptedDownloadIds.has(downloadItem.id)) {
+      if (suggest) suggest();
+      return;
+    }
 
-    sendNativeMessage({
-      action: "add_download",
-      url: downloadItem.url,
-      filename: filename || null,
-      total_bytes: downloadItem.fileSize > 0 ? downloadItem.fileSize : (downloadItem.totalBytes > 0 ? downloadItem.totalBytes : 0),
-      headers: headers,
-      start_immediately: true
-    });
-  } else {
+    const rawFilename = downloadItem.filename || "";
+    const filename = rawFilename.split(/[/\\]/).pop() || "";
+    const ext = filename.includes(".") ? filename.split(".").pop().toLowerCase() : "";
+
+    // If extension is in ignore list, do not intercept
+    if (ext && currentSettings.ignoreExtensions.includes(ext)) {
+      if (suggest) suggest();
+      return;
+    }
+
+    // Check if matches target extensions or binary media MIME types
+    const mime = (downloadItem.mime || "").toLowerCase();
+    const isTargetExt = ext && currentSettings.interceptExtensions.includes(ext);
+    const isBinaryMime = mime.startsWith("video/") || mime.startsWith("audio/") ||
+                         mime.includes("zip") || mime.includes("octet-stream") ||
+                         mime.includes("pdf") || mime.includes("tar") || mime.includes("gzip");
+
+    // In Chrome/onDeterminingFilename, if neither target extension nor binary mime, do not intercept
+    const isGenericOrTarget = isTargetExt || isBinaryMime || (!ext && filename.length === 0);
+
+    if (isGenericOrTarget && (isTargetExt || isBinaryMime || !suggest)) {
+      interceptedDownloadIds.add(downloadItem.id);
+
+      // Cancel native browser download
+      if (chrome.downloads && chrome.downloads.cancel) {
+        try {
+          chrome.downloads.cancel(downloadItem.id, () => {
+            if (chrome.runtime.lastError) { /* ignore */ }
+            if (chrome.downloads.erase) {
+              chrome.downloads.erase({ id: downloadItem.id }, () => {
+                if (chrome.runtime.lastError) { /* ignore */ }
+              });
+            }
+          });
+        } catch (e) {}
+      }
+
+      if (suggest) {
+        suggest();
+      }
+
+      const headers = await buildDownloadHeaders(downloadItem.url, downloadItem.referrer || downloadItem.url);
+
+      sendNativeMessage({
+        action: "add_download",
+        url: downloadItem.url,
+        filename: filename || null,
+        total_bytes: downloadItem.fileSize > 0 ? downloadItem.fileSize : (downloadItem.totalBytes > 0 ? downloadItem.totalBytes : 0),
+        headers: headers,
+        start_immediately: true
+      });
+    } else {
+      if (suggest) {
+        suggest();
+      }
+    }
+  } catch (err) {
+    console.error("[IDM Extension] Download intercept error:", err);
     if (suggest) {
       suggest();
     }
@@ -456,68 +479,88 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
   if (request.action === "download_media") {
     (async () => {
-      const pageUrl = (sender.tab && sender.tab.url) ? sender.tab.url : (request.page_url || request.referer || "");
-      const headers = await buildDownloadHeaders(request.url, pageUrl);
-      if (request.quality) {
-        headers["quality"] = request.quality;
+      try {
+        const pageUrl = (sender.tab && sender.tab.url) ? sender.tab.url : (request.page_url || request.referer || "");
+        const headers = await buildDownloadHeaders(request.url, pageUrl);
+        if (request.quality) {
+          headers["quality"] = request.quality;
+        }
+        const res = await sendNativeMessage({
+          action: "add_download",
+          url: request.url,
+          filename: request.filename,
+          headers: headers,
+          quality: request.quality || null,
+          total_bytes: request.filesize || request.total_bytes || 0,
+          start_immediately: true
+        });
+        sendResponse(res);
+      } catch (err) {
+        sendResponse({ status: "error", error: err.toString() });
       }
-      const res = await sendNativeMessage({
-        action: "add_download",
-        url: request.url,
-        filename: request.filename,
-        headers: headers,
-        quality: request.quality || null,
-        total_bytes: request.filesize || request.total_bytes || 0,
-        start_immediately: true
-      });
-      sendResponse(res);
     })();
     return true;
   }
 
   if (request.action === "get_tab_media") {
     (async () => {
-      const tabId = request.tabId;
-      const mediaSet = await getTabMediaStore(tabId);
-      const list = mediaSet ? Array.from(mediaSet) : [];
-      sendResponse({ streams: list });
+      try {
+        const tabId = request.tabId;
+        const mediaSet = await getTabMediaStore(tabId);
+        const list = mediaSet ? Array.from(mediaSet) : [];
+        sendResponse({ streams: list });
+      } catch (err) {
+        sendResponse({ streams: [] });
+      }
     })();
     return true;
   }
 
   if (request.action === "record_media_stream") {
     (async () => {
-      const tabId = sender.tab && sender.tab.id ? sender.tab.id : request.tabId;
-      if (tabId && request.url) {
-        const mediaSet = await getTabMediaStore(tabId);
-        mediaSet.add(request.url);
-        await saveTabMediaStore(tabId, mediaSet);
+      try {
+        const tabId = sender.tab && sender.tab.id ? sender.tab.id : request.tabId;
+        if (tabId && request.url) {
+          const mediaSet = await getTabMediaStore(tabId);
+          mediaSet.add(request.url);
+          await saveTabMediaStore(tabId, mediaSet);
+        }
+        sendResponse({ status: "ok" });
+      } catch (err) {
+        sendResponse({ status: "error", error: err.toString() });
       }
-      sendResponse({ status: "ok" });
     })();
     return true;
   }
 
   if (request.action === "get_settings") {
     (async () => {
-      const current = await getSettings();
-      sendResponse({ settings: current });
+      try {
+        const current = await getSettings();
+        sendResponse({ settings: current });
+      } catch (err) {
+        sendResponse({ settings: DEFAULT_SETTINGS });
+      }
     })();
     return true;
   }
 
   if (request.action === "save_settings") {
     (async () => {
-      const current = await getSettings();
-      const updated = Object.assign({}, current, request.settings || {});
-      cachedSettings = updated;
-      chrome.storage.local.set({ idmSettings: updated }, () => {
-        if (chrome.runtime.lastError) {
-          sendResponse({ status: "error", error: chrome.runtime.lastError.message });
-        } else {
-          sendResponse({ status: "ok" });
-        }
-      });
+      try {
+        const current = await getSettings();
+        const updated = Object.assign({}, current, request.settings || {});
+        cachedSettings = updated;
+        chrome.storage.local.set({ idmSettings: updated }, () => {
+          if (chrome.runtime.lastError) {
+            sendResponse({ status: "error", error: chrome.runtime.lastError.message });
+          } else {
+            sendResponse({ status: "ok" });
+          }
+        });
+      } catch (err) {
+        sendResponse({ status: "error", error: err.toString() });
+      }
     })();
     return true;
   }
