@@ -10,6 +10,7 @@ import subprocess
 import sys
 import time
 from typing import Any, Dict, Optional
+import idm_core
 from idm_ipc.socket_client import IPCClient
 
 HOST_NAME = "com.idm.linux.native_host"
@@ -122,7 +123,7 @@ def handle_browser_message(msg: Dict[str, Any], ipc_client: Optional[IPCClient] 
             "status": "ok",
             "pong": True,
             "app": "IDM Linux",
-            "version": "1.0.3",
+            "version": idm_core.__version__,
             "engine_running": is_running
         }
 
