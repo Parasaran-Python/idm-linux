@@ -173,21 +173,35 @@ class DASHParser:
         res = template.replace("$$", "\x00")
         res = res.replace("$RepresentationID$", str(rep_id))
         if bandwidth is not None:
-            res = res.replace("$Bandwidth$", str(bandwidth))
+            def bw_repl(m):
+                fmt = m.group(1)
+                if fmt:
+                    try:
+                        return f"%{fmt}" % int(bandwidth)
+                    except Exception:
+                        return str(bandwidth)
+                return str(bandwidth)
+            res = re.sub(r"\$Bandwidth(?:%([^$]+))?\$", bw_repl, res)
         if number is not None:
             def num_repl(m):
                 fmt = m.group(1)
                 if fmt:
-                    return f"%{fmt}d" % int(number)
+                    try:
+                        return f"%{fmt}" % int(number)
+                    except Exception:
+                        return str(number)
                 return str(number)
-            res = re.sub(r"\$Number(?:%([0-9]+))?d?\$", num_repl, res)
+            res = re.sub(r"\$Number(?:%([^$]+))?\$", num_repl, res)
         if time_val is not None:
             def time_repl(m):
                 fmt = m.group(1)
                 if fmt:
-                    return f"%{fmt}d" % int(time_val)
+                    try:
+                        return f"%{fmt}" % int(time_val)
+                    except Exception:
+                        return str(time_val)
                 return str(time_val)
-            res = re.sub(r"\$Time(?:%([0-9]+))?d?\$", time_repl, res)
+            res = re.sub(r"\$Time(?:%([^$]+))?\$", time_repl, res)
         res = res.replace("\x00", "$")
         return res
 
@@ -208,7 +222,7 @@ class DASHParser:
     def parse_tracks(self) -> Dict[str, Any]:
         """Parse DASH MPD XML and extract video and audio track segments and metadata."""
         content = self._fetch_text(self.mpd_url)
-        root = ET.fromstring(content)
+        root = ET.fromstring(content.encode("utf-8"))
         total_duration = self.parse_iso8601_duration(root.attrib.get("mediaPresentationDuration", ""))
 
         base_url = self.mpd_url
@@ -216,12 +230,14 @@ class DASHParser:
             if self._local_tag(child) == "BaseURL" and child.text:
                 base_url = self._resolve_url(base_url, child.text.strip())
 
-        video_adaptations = []
-        audio_adaptations = []
-
         periods = [elem for elem in root if self._local_tag(elem) == "Period"]
         if not periods:
             periods = [root]
+
+        all_video_segs: List[str] = []
+        all_audio_segs: List[str] = []
+        best_video_bw = 0
+        best_audio_bw = 0
 
         for period in periods:
             period_duration_str = period.attrib.get("duration", "")
@@ -232,6 +248,9 @@ class DASHParser:
                     p_base_url = self._resolve_url(p_base_url, child.text.strip())
 
             period_tmpl = next((elem for elem in period if self._local_tag(elem) == "SegmentTemplate"), None)
+
+            video_adaptations = []
+            audio_adaptations = []
 
             adaptations = [elem for elem in period if self._local_tag(elem) == "AdaptationSet"]
             for ad in adaptations:
@@ -267,102 +286,106 @@ class DASHParser:
                 elif is_audio:
                     audio_adaptations.append(info)
 
-        # Select highest bitrate video representation
-        selected_video_rep = None
-        selected_video_info = None
-        best_video_bw = -1
-        for v_ad in video_adaptations:
-            for rep in v_ad["reps"]:
-                bw = int(rep.attrib.get("bandwidth", 0))
-                if bw > best_video_bw or selected_video_rep is None:
-                    best_video_bw = bw
-                    selected_video_rep = rep
-                    selected_video_info = v_ad
+            # Select highest bitrate video representation in this period
+            p_video_rep = None
+            p_video_info = None
+            p_best_v_bw = -1
+            for v_ad in video_adaptations:
+                for rep in v_ad["reps"]:
+                    bw = int(rep.attrib.get("bandwidth", 0))
+                    if bw > p_best_v_bw or p_video_rep is None:
+                        p_best_v_bw = bw
+                        p_video_rep = rep
+                        p_video_info = v_ad
+            if p_best_v_bw > best_video_bw:
+                best_video_bw = p_best_v_bw
 
-        # Select best audio representation (prefer role='main' or first audio adaptation)
-        selected_audio_rep = None
-        selected_audio_info = None
-        best_audio_bw = -1
-        audio_adaptations.sort(key=lambda a: 0 if "main" in a["roles"] else 1)
-        if audio_adaptations:
-            target_audio_ad = audio_adaptations[0]
-            for rep in target_audio_ad["reps"]:
-                bw = int(rep.attrib.get("bandwidth", 0))
-                if bw > best_audio_bw or selected_audio_rep is None:
-                    best_audio_bw = bw
-                    selected_audio_rep = rep
-                    selected_audio_info = target_audio_ad
+            # Select best audio representation in this period (prefer role='main' or first audio adaptation)
+            p_audio_rep = None
+            p_audio_info = None
+            p_best_a_bw = -1
+            audio_adaptations.sort(key=lambda a: 0 if "main" in a["roles"] else 1)
+            if audio_adaptations:
+                target_audio_ad = audio_adaptations[0]
+                for rep in target_audio_ad["reps"]:
+                    bw = int(rep.attrib.get("bandwidth", 0))
+                    if bw > p_best_a_bw or p_audio_rep is None:
+                        p_best_a_bw = bw
+                        p_audio_rep = rep
+                        p_audio_info = target_audio_ad
+            if p_best_a_bw > best_audio_bw:
+                best_audio_bw = p_best_a_bw
 
-        def extract_segments(rep, ad_info):
-            if rep is None or ad_info is None:
-                return []
-            segments = []
-            rep_base = ad_info["base_url"]
-            for child in rep:
-                if self._local_tag(child) == "BaseURL" and child.text:
-                    rep_base = self._resolve_url(rep_base, child.text.strip())
+            def extract_segments(rep, ad_info):
+                if rep is None or ad_info is None:
+                    return []
+                segments = []
+                rep_base = ad_info["base_url"]
+                for child in rep:
+                    if self._local_tag(child) == "BaseURL" and child.text:
+                        rep_base = self._resolve_url(rep_base, child.text.strip())
 
-            tmpl = next((elem for elem in rep if self._local_tag(elem) == "SegmentTemplate"), ad_info["template"])
-            s_list = next((elem for elem in rep if self._local_tag(elem) == "SegmentList"), ad_info["segment_list"])
-            rep_id = rep.attrib.get("id", "")
-            rep_bw = int(rep.attrib.get("bandwidth", 0))
+                tmpl = next((elem for elem in rep if self._local_tag(elem) == "SegmentTemplate"), ad_info["template"])
+                s_list = next((elem for elem in rep if self._local_tag(elem) == "SegmentList"), ad_info["segment_list"])
+                rep_id = rep.attrib.get("id", "")
+                rep_bw = int(rep.attrib.get("bandwidth", 0))
 
-            if tmpl is not None:
-                timescale = int(tmpl.attrib.get("timescale", 1))
-                duration = int(tmpl.attrib.get("duration", 0))
-                start_num = int(tmpl.attrib.get("startNumber", 1))
-                init_tmpl = tmpl.attrib.get("initialization", "")
-                media_tmpl = tmpl.attrib.get("media", "")
+                if tmpl is not None:
+                    timescale = int(tmpl.attrib.get("timescale", 1))
+                    duration = int(tmpl.attrib.get("duration", 0))
+                    start_num = int(tmpl.attrib.get("startNumber", 1))
+                    init_tmpl = tmpl.attrib.get("initialization", "")
+                    media_tmpl = tmpl.attrib.get("media", "")
 
-                if init_tmpl:
-                    init_rel = self._format_template(init_tmpl, rep_id=rep_id, bandwidth=rep_bw)
-                    segments.append(self._resolve_url(rep_base, init_rel))
+                    if init_tmpl:
+                        init_rel = self._format_template(init_tmpl, rep_id=rep_id, bandwidth=rep_bw)
+                        segments.append(self._resolve_url(rep_base, init_rel))
 
-                timeline = next((elem for elem in tmpl if self._local_tag(elem) == "SegmentTimeline"), None)
-                if timeline is not None:
-                    curr_time = 0
-                    curr_num = start_num
-                    for s in [elem for elem in timeline if self._local_tag(elem) == "S"]:
-                        if "t" in s.attrib:
-                            curr_time = int(s.attrib["t"])
-                        d = int(s.attrib.get("d", 0))
-                        r = int(s.attrib.get("r", 0))
-                        count = r + 1 if r >= 0 else 1
-                        for _ in range(count):
-                            seg_rel = self._format_template(media_tmpl, rep_id=rep_id, number=curr_num, time_val=curr_time, bandwidth=rep_bw)
+                    timeline = next((elem for elem in tmpl if self._local_tag(elem) == "SegmentTimeline"), None)
+                    if timeline is not None:
+                        curr_time = 0
+                        curr_num = start_num
+                        for s in [elem for elem in timeline if self._local_tag(elem) == "S"]:
+                            if "t" in s.attrib:
+                                curr_time = int(s.attrib["t"])
+                            d = int(s.attrib.get("d", 0))
+                            r = int(s.attrib.get("r", 0))
+                            count = r + 1 if r >= 0 else 1
+                            for _ in range(count):
+                                seg_rel = self._format_template(media_tmpl, rep_id=rep_id, number=curr_num, time_val=curr_time, bandwidth=rep_bw)
+                                segments.append(self._resolve_url(rep_base, seg_rel))
+                                curr_time += d
+                                curr_num += 1
+                    elif duration > 0 and timescale > 0:
+                        seg_dur_sec = duration / timescale
+                        p_dur = ad_info["period_duration"] or total_duration
+                        num_segs = max(1, math.ceil(p_dur / seg_dur_sec)) if p_dur > 0 else 1
+                        for n in range(start_num, start_num + num_segs):
+                            time_val = (n - start_num) * duration
+                            seg_rel = self._format_template(media_tmpl, rep_id=rep_id, number=n, time_val=time_val, bandwidth=rep_bw)
                             segments.append(self._resolve_url(rep_base, seg_rel))
-                            curr_time += d
-                            curr_num += 1
-                elif duration > 0 and timescale > 0:
-                    seg_dur_sec = duration / timescale
-                    p_dur = ad_info["period_duration"] or total_duration
-                    num_segs = max(1, math.ceil(p_dur / seg_dur_sec)) if p_dur > 0 else 1
-                    for n in range(start_num, start_num + num_segs):
-                        time_val = (n - start_num) * duration
-                        seg_rel = self._format_template(media_tmpl, rep_id=rep_id, number=n, time_val=time_val, bandwidth=rep_bw)
-                        segments.append(self._resolve_url(rep_base, seg_rel))
 
-            elif s_list is not None:
-                init_elem = next((elem for elem in s_list if self._local_tag(elem) == "Initialization"), None)
-                if init_elem is not None and "sourceURL" in init_elem.attrib:
-                    segments.append(self._resolve_url(rep_base, init_elem.attrib["sourceURL"]))
-                for seg_url_elem in [elem for elem in s_list if self._local_tag(elem) == "SegmentURL"]:
-                    if "media" in seg_url_elem.attrib:
-                        segments.append(self._resolve_url(rep_base, seg_url_elem.attrib["media"]))
-            elif rep.text and rep.text.strip():
-                segments.append(self._resolve_url(rep_base, rep.text.strip()))
+                elif s_list is not None:
+                    init_elem = next((elem for elem in s_list if self._local_tag(elem) == "Initialization"), None)
+                    if init_elem is not None and "sourceURL" in init_elem.attrib:
+                        segments.append(self._resolve_url(rep_base, init_elem.attrib["sourceURL"]))
+                    for seg_url_elem in [elem for elem in s_list if self._local_tag(elem) == "SegmentURL"]:
+                        if "media" in seg_url_elem.attrib:
+                            segments.append(self._resolve_url(rep_base, seg_url_elem.attrib["media"]))
+                elif rep.text and rep.text.strip():
+                    segments.append(self._resolve_url(rep_base, rep.text.strip()))
 
-            return segments
+                return segments
 
-        video_segs = extract_segments(selected_video_rep, selected_video_info)
-        audio_segs = extract_segments(selected_audio_rep, selected_audio_info)
+            all_video_segs.extend(extract_segments(p_video_rep, p_video_info))
+            all_audio_segs.extend(extract_segments(p_audio_rep, p_audio_info))
 
         total_bw = max(0, best_video_bw) + max(0, best_audio_bw)
         return {
             "duration": total_duration,
             "bandwidth": total_bw,
-            "video_segments": video_segs,
-            "audio_segments": audio_segs,
+            "video_segments": all_video_segs,
+            "audio_segments": all_audio_segs,
             "video_bandwidth": max(0, best_video_bw),
             "audio_bandwidth": max(0, best_audio_bw),
         }

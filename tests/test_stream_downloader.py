@@ -292,6 +292,38 @@ class TestStreamDownloader(unittest.TestCase):
         self.assertEqual(dash_info["bandwidth"], 2128000)
         self.assertTrue(dash_info["filesize"] > 0)
 
+    def test_dash_parser_multi_period(self):
+        multi_period_mpd = """<?xml version="1.0" encoding="UTF-8"?>
+<MPD xmlns="urn:mpeg:dash:schema:mpd:2011" mediaPresentationDuration="PT20S" type="static">
+  <Period id="p1" duration="PT10S">
+    <AdaptationSet mimeType="video/mp4">
+      <SegmentTemplate timescale="1000" duration="5000" initialization="p1-init.mp4" media="p1-seg-$Number$.m4s" startNumber="1"/>
+      <Representation id="v1" bandwidth="1000000"/>
+    </AdaptationSet>
+  </Period>
+  <Period id="p2" duration="PT10S">
+    <AdaptationSet mimeType="video/mp4">
+      <SegmentTemplate timescale="1000" duration="5000" initialization="p2-init.mp4" media="p2-seg-$Number$.m4s" startNumber="1"/>
+      <Representation id="v2" bandwidth="1000000"/>
+    </AdaptationSet>
+  </Period>
+</MPD>
+"""
+        with open(os.path.join(self.server_dir, "multi_period.mpd"), "w") as f:
+            f.write(multi_period_mpd)
+
+        url = f"http://127.0.0.1:{self.port}/multi_period.mpd"
+        parser = DASHParser(url)
+        tracks = parser.parse_tracks()
+        # Period 1 (init + 2 segs) + Period 2 (init + 2 segs) = 6 segments
+        self.assertEqual(len(tracks["video_segments"]), 6)
+        self.assertTrue(tracks["video_segments"][0].endswith("p1-init.mp4"))
+        self.assertTrue(tracks["video_segments"][1].endswith("p1-seg-1.m4s"))
+        self.assertTrue(tracks["video_segments"][2].endswith("p1-seg-2.m4s"))
+        self.assertTrue(tracks["video_segments"][3].endswith("p2-init.mp4"))
+        self.assertTrue(tracks["video_segments"][4].endswith("p2-seg-1.m4s"))
+        self.assertTrue(tracks["video_segments"][5].endswith("p2-seg-2.m4s"))
+
     def test_detect_stream_type(self):
         self.assertEqual(StreamDownloader.detect_stream_type("http://example.com/live/master.m3u8"), "hls")
         self.assertEqual(StreamDownloader.detect_stream_type("http://example.com/live/master.m3u8?token=123"), "hls")
