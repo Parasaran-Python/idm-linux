@@ -59,6 +59,43 @@
 
   injectPageHook();
 
+  function isMediaSegment(url) {
+    if (!url || typeof url !== "string") return true;
+    const lower = url.toLowerCase();
+
+    // Never filter out stream manifests
+    if (lower.includes(".mpd") || lower.includes(".m3u8")) {
+      return false;
+    }
+
+    // Filter out chunk files and fragment extensions
+    if (lower.includes(".m4s") || lower.includes(".m4f") || lower.includes(".f4m") || lower.includes(".f4f")) {
+      return true;
+    }
+
+    // Filter out init chunks (init.mp4, *-init.mp4, init-*.mp4, etc.)
+    if (/init(-|_|\.)?.*\.mp4/i.test(lower) || /init\.m4s/i.test(lower) || /initialization/i.test(lower)) {
+      return true;
+    }
+
+    // Filter out segment patterns (seg-1.mp4, segment-123.ts, chunk_45.ts, frag-12.mp4, etc.)
+    if (/(seg|segment|chunk|frag|fragment)[-_0-9]+/i.test(lower)) {
+      return true;
+    }
+
+    // Filter out byte range fragments
+    if (lower.includes("range=") || lower.includes("bytes=") || lower.includes("bytestart=")) {
+      return true;
+    }
+
+    // Filter out standalone .ts segments (HLS chunks)
+    if (/\.ts(\?|$)/i.test(lower) && !lower.includes("playlist") && !lower.includes("manifest")) {
+      return true;
+    }
+
+    return false;
+  }
+
   /**
    * Helper to extract clean page/video title
    */
@@ -162,24 +199,35 @@
           ];
         } else if (capturedStreams.size > 0) {
           // Add clean direct media files & streaming playlists (HLS / DASH / MP4 / WebM)
+          const validStreams = [];
           capturedStreams.forEach((meta, streamUrl) => {
-            if (streamUrl.includes("videoplayback") && streamUrl.includes("range=")) {
-              return; // Skip internal fragmented player ranges
+            if (isMediaSegment(streamUrl)) {
+              return; // Skip raw chunk fragments
             }
-            if (streamUrl.includes(".m3u8")) {
-              items.push({ label: "HLS Video Stream (.m3u8)", format: "HLS", quality: "best", url: streamUrl });
-            } else if (streamUrl.includes(".mpd")) {
-              items.push({ label: "DASH Video Stream (.mpd)", format: "DASH", quality: "best", url: streamUrl });
+            if (streamUrl.includes(".mpd")) {
+              validStreams.push({ label: "DASH Video Stream (.mpd)", format: "DASH", quality: "best", url: streamUrl, priority: 1 });
+            } else if (streamUrl.includes(".m3u8")) {
+              validStreams.push({ label: "HLS Video Stream (.m3u8)", format: "HLS", quality: "best", url: streamUrl, priority: 2 });
             } else if (streamUrl.includes(".mp4") || (meta.format && meta.format.includes("mp4"))) {
-              items.push({ label: "Direct MP4 Video (Original)", format: "MP4", quality: "best", url: streamUrl });
+              validStreams.push({ label: "Full MP4 Video (Original)", format: "MP4", quality: "best", url: streamUrl, priority: 3 });
             } else if (streamUrl.includes(".webm") || (meta.format && meta.format.includes("webm"))) {
-              items.push({ label: "Direct WebM Video", format: "WEBM", quality: "best", url: streamUrl });
+              validStreams.push({ label: "Full WebM Video", format: "WEBM", quality: "best", url: streamUrl, priority: 4 });
             } else if (streamUrl.includes(".mp3") || streamUrl.includes(".m4a") || (meta.format && meta.format.includes("audio"))) {
-              items.push({ label: "Direct Audio Stream", format: "MP3", quality: "audio", url: streamUrl });
+              validStreams.push({ label: "Audio Stream", format: "MP3", quality: "audio", url: streamUrl, priority: 5 });
             } else {
-              items.push({ label: "Direct Media Stream", format: "MEDIA", quality: "best", url: streamUrl });
+              validStreams.push({ label: "Media Stream", format: "MEDIA", quality: "best", url: streamUrl, priority: 6 });
             }
           });
+
+          validStreams.sort((a, b) => a.priority - b.priority);
+
+          const seen = new Set();
+          for (const s of validStreams) {
+            if (!seen.has(s.url)) {
+              seen.add(s.url);
+              items.push(s);
+            }
+          }
         }
 
         // If empty, show extracting indicator while background query finishes
@@ -472,7 +520,7 @@
 
   // 1. Listen to Page Hook Custom Events
   document.addEventListener("__idm_media_event", (e) => {
-    if (e.detail && e.detail.url) {
+    if (e.detail && e.detail.url && !isMediaSegment(e.detail.url)) {
       capturedStreams.set(e.detail.url, { format: e.detail.type || "Stream" });
       try {
         chrome.runtime.sendMessage({
@@ -502,7 +550,7 @@
 
   // 2. Listen to Background Network Sniffer Messages
   chrome.runtime.onMessage.addListener((msg) => {
-    if (msg.action === "idm_media_detected" && msg.streamUrl) {
+    if (msg.action === "idm_media_detected" && msg.streamUrl && !isMediaSegment(msg.streamUrl)) {
       capturedStreams.set(msg.streamUrl, { format: msg.contentType || "Stream" });
       repositionBar();
     }

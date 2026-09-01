@@ -183,6 +183,46 @@ function sendNativeMessage(payload) {
 }
 
 /**
+ * Check if a URL is a raw stream segment / chunk fragment rather than a complete media stream / manifest.
+ */
+function isMediaSegment(url) {
+  if (!url || typeof url !== "string") return true;
+  const lower = url.toLowerCase();
+
+  // Never filter out stream manifests
+  if (lower.includes(".mpd") || lower.includes(".m3u8")) {
+    return false;
+  }
+
+  // Filter out chunk files and fragment extensions
+  if (lower.includes(".m4s") || lower.includes(".m4f") || lower.includes(".f4m") || lower.includes(".f4f")) {
+    return true;
+  }
+
+  // Filter out init chunks (init.mp4, *-init.mp4, init-*.mp4, etc.)
+  if (/init(-|_|\.)?.*\.mp4/i.test(lower) || /init\.m4s/i.test(lower) || /initialization/i.test(lower)) {
+    return true;
+  }
+
+  // Filter out segment patterns (seg-1.mp4, segment-123.ts, chunk_45.ts, frag-12.mp4, etc.)
+  if (/(seg|segment|chunk|frag|fragment)[-_0-9]+/i.test(lower)) {
+    return true;
+  }
+
+  // Filter out byte range fragments
+  if (lower.includes("range=") || lower.includes("bytes=") || lower.includes("bytestart=")) {
+    return true;
+  }
+
+  // Filter out standalone .ts segments (HLS chunks)
+  if (/\.ts(\?|$)/i.test(lower) && !lower.includes("playlist") && !lower.includes("manifest")) {
+    return true;
+  }
+
+  return false;
+}
+
+/**
  * Listen for network media requests (HLS, DASH, MP4, WebM, audio)
  */
 if (chrome.webRequest && chrome.webRequest.onHeadersReceived) {
@@ -193,6 +233,8 @@ if (chrome.webRequest && chrome.webRequest.onHeadersReceived) {
         if (!currentSettings.videoSniffer || details.tabId < 0) return;
 
         const url = details.url || "";
+        if (isMediaSegment(url)) return;
+
         const headers = details.responseHeaders || [];
         let contentType = "";
         let contentLength = 0;
@@ -218,8 +260,6 @@ if (chrome.webRequest && chrome.webRequest.onHeadersReceived) {
           url.includes("videoplayback") ||
           url.includes(".mp4") ||
           url.includes(".webm") ||
-          url.includes(".ts") ||
-          url.includes(".m4s") ||
           url.includes(".m4a") ||
           url.includes(".mp3");
 
@@ -520,7 +560,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     (async () => {
       try {
         const tabId = sender.tab && sender.tab.id ? sender.tab.id : request.tabId;
-        if (tabId && request.url) {
+        if (tabId && request.url && !isMediaSegment(request.url)) {
           const mediaSet = await getTabMediaStore(tabId);
           mediaSet.add(request.url);
           await saveTabMediaStore(tabId, mediaSet);

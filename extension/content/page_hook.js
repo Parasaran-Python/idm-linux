@@ -9,9 +9,47 @@
   if (window.__idm_page_hook_injected) return;
   window.__idm_page_hook_injected = true;
 
+  function isMediaSegment(url) {
+    if (!url || typeof url !== "string") return true;
+    const lower = url.toLowerCase();
+
+    // Never filter out stream manifests
+    if (lower.includes(".mpd") || lower.includes(".m3u8")) {
+      return false;
+    }
+
+    // Filter out chunk files and fragment extensions
+    if (lower.includes(".m4s") || lower.includes(".m4f") || lower.includes(".f4m") || lower.includes(".f4f")) {
+      return true;
+    }
+
+    // Filter out init chunks (init.mp4, *-init.mp4, init-*.mp4, etc.)
+    if (/init(-|_|\.)?.*\.mp4/i.test(lower) || /init\.m4s/i.test(lower) || /initialization/i.test(lower)) {
+      return true;
+    }
+
+    // Filter out segment patterns (seg-1.mp4, segment-123.ts, chunk_45.ts, frag-12.mp4, etc.)
+    if (/(seg|segment|chunk|frag|fragment)[-_0-9]+/i.test(lower)) {
+      return true;
+    }
+
+    // Filter out byte range fragments
+    if (lower.includes("range=") || lower.includes("bytes=") || lower.includes("bytestart=")) {
+      return true;
+    }
+
+    // Filter out standalone .ts segments (HLS chunks)
+    if (/\.ts(\?|$)/i.test(lower) && !lower.includes("playlist") && !lower.includes("manifest")) {
+      return true;
+    }
+
+    return false;
+  }
+
   function reportMedia(url, type) {
     if (!url || typeof url !== "string") return;
     if (url.startsWith("data:") || url.startsWith("blob:null")) return;
+    if (isMediaSegment(url)) return;
 
     // Check media signatures
     const isMedia =
@@ -20,8 +58,6 @@
       url.includes("videoplayback") ||
       url.includes(".mp4") ||
       url.includes(".webm") ||
-      url.includes(".ts") ||
-      url.includes(".m4s") ||
       url.includes(".m4a") ||
       url.includes(".mp3") ||
       url.includes(".flv") ||
