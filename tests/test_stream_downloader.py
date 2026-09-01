@@ -332,6 +332,54 @@ class TestStreamDownloader(unittest.TestCase):
         self.assertEqual(StreamDownloader.detect_stream_type("http://example.com/unknown", content="<MPD xmlns='...'>"), "dash")
         self.assertEqual(StreamDownloader.detect_stream_type("http://example.com/unknown", content="#EXTM3U\n..."), "hls")
 
+    def test_extract_formats_and_quality_selection(self):
+        multi_qual_mpd = """<?xml version="1.0" encoding="UTF-8"?>
+<MPD xmlns="urn:mpeg:dash:schema:mpd:2011" mediaPresentationDuration="PT10S" type="static">
+  <Period>
+    <AdaptationSet mimeType="video/mp4" contentType="video">
+      <SegmentTemplate timescale="1000" duration="5000" initialization="init-$RepresentationID$.mp4" media="chunk-$RepresentationID$-$Number$.m4s" startNumber="1"/>
+      <Representation id="1080p" bandwidth="4000000" width="1920" height="1080" frameRate="60"/>
+      <Representation id="720p" bandwidth="2000000" width="1280" height="720" frameRate="30"/>
+      <Representation id="480p" bandwidth="1000000" width="854" height="480" frameRate="30"/>
+    </AdaptationSet>
+    <AdaptationSet mimeType="audio/mp4" contentType="audio" lang="en">
+      <SegmentTemplate timescale="1000" duration="5000" initialization="audio-init.mp4" media="audio-$Number$.m4s" startNumber="1"/>
+      <Representation id="a1" bandwidth="128000" audioSamplingRate="48000"/>
+    </AdaptationSet>
+  </Period>
+</MPD>
+"""
+        with open(os.path.join(self.server_dir, "multi_qual.mpd"), "w") as f:
+            f.write(multi_qual_mpd)
+
+        url = f"http://127.0.0.1:{self.port}/multi_qual.mpd"
+
+        # 1. Test extract_formats
+        fmts = StreamDownloader.extract_formats(url)
+        self.assertTrue(len(fmts) >= 4)
+        labels = [f["label"] for f in fmts]
+        self.assertTrue(any("1080p" in l for l in labels))
+        self.assertTrue(any("720p" in l for l in labels))
+        self.assertTrue(any("480p" in l for l in labels))
+        self.assertTrue(any("Audio" in l for l in labels))
+
+        # 2. Test quality selection for 720p
+        p_720 = DASHParser(url, headers={"quality": "720"})
+        tracks_720 = p_720.parse_tracks()
+        self.assertTrue(tracks_720["video_segments"][0].endswith("init-720p.mp4"))
+
+        # 3. Test quality selection for 480p
+        p_480 = DASHParser(url, headers={"quality": "480p"})
+        tracks_480 = p_480.parse_tracks()
+        self.assertTrue(tracks_480["video_segments"][0].endswith("init-480p.mp4"))
+
+        # 4. Test audio-only quality selection
+        p_audio = DASHParser(url, headers={"quality": "audio"})
+        tracks_audio = p_audio.parse_tracks()
+        self.assertEqual(len(tracks_audio["video_segments"]), 0)
+        self.assertTrue(len(tracks_audio["audio_segments"]) > 0)
+
 
 if __name__ == "__main__":
     unittest.main()
+

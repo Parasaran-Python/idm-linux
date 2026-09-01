@@ -66,19 +66,38 @@ class HLSParser:
         return segments
 
     def _select_best_variant(self, lines: List[str], base_url: str) -> str:
-        """Find the highest bitrate/resolution variant stream in a master playlist."""
+        """Find the matching or highest bitrate/resolution variant stream in a master playlist."""
+        quality_req = (self.headers.get("quality") or "best").lower() if self.headers else "best"
+        target_height = None
+        if quality_req != "best" and quality_req != "audio":
+            m = re.search(r"\d+", quality_req)
+            if m:
+                target_height = int(m.group(0))
+
         best_bw = -1
         best_url = None
+        target_url = None
+        target_bw = -1
 
         for i, line in enumerate(lines):
             if line.startswith("#EXT-X-STREAM-INF"):
                 match = re.search(r"BANDWIDTH=(\d+)", line)
                 bw = int(match.group(1)) if match else 0
+                res_match = re.search(r"RESOLUTION=(\d+)x(\d+)", line)
+                h = int(res_match.group(2)) if res_match else 0
+
                 if i + 1 < len(lines) and not lines[i + 1].startswith("#"):
+                    variant_url = self._resolve_url(base_url, lines[i + 1])
+                    if target_height and h == target_height:
+                        if bw > target_bw or target_url is None:
+                            target_bw = bw
+                            target_url = variant_url
                     if bw > best_bw or best_url is None:
                         best_bw = bw
-                        best_url = self._resolve_url(base_url, lines[i + 1])
+                        best_url = variant_url
 
+        if target_url:
+            return target_url
         return best_url or base_url
 
     def _fetch_text(self, url: str) -> str:
@@ -431,19 +450,44 @@ class DASHParser:
                 elif is_audio:
                     audio_adaptations.append(info)
 
-            # Select highest bitrate video representation in this period
+            # Quality selection filter (e.g., '720', '480', 'audio', 'best')
+            quality_req = (self.headers.get("quality") or "best").lower() if self.headers else "best"
+            target_height = None
+            if quality_req != "best" and quality_req != "audio":
+                m = re.search(r"\d+", quality_req)
+                if m:
+                    target_height = int(m.group(0))
+
+            # Select video representation in this period
             p_video_rep = None
             p_video_info = None
             p_best_v_bw = -1
-            for v_ad in video_adaptations:
-                for rep in v_ad["reps"]:
-                    bw = int(rep.attrib.get("bandwidth", 0))
-                    if bw > p_best_v_bw or p_video_rep is None:
-                        p_best_v_bw = bw
-                        p_video_rep = rep
-                        p_video_info = v_ad
-            if p_best_v_bw > best_video_bw:
-                best_video_bw = p_best_v_bw
+            target_v_rep = None
+            target_v_info = None
+            target_v_bw = -1
+
+            if quality_req != "audio":
+                for v_ad in video_adaptations:
+                    for rep in v_ad["reps"]:
+                        bw = int(rep.attrib.get("bandwidth", 0))
+                        h = int(rep.attrib.get("height", 0) or v_ad["adaptation_elem"].attrib.get("height", 0) or 0)
+                        if target_height and h == target_height:
+                            if bw > target_v_bw or target_v_rep is None:
+                                target_v_bw = bw
+                                target_v_rep = rep
+                                target_v_info = v_ad
+                        if bw > p_best_v_bw or p_video_rep is None:
+                            p_best_v_bw = bw
+                            p_video_rep = rep
+                            p_video_info = v_ad
+
+                if target_v_rep is not None:
+                    p_video_rep = target_v_rep
+                    p_video_info = target_v_info
+                    p_best_v_bw = target_v_bw
+
+                if p_best_v_bw > best_video_bw:
+                    best_video_bw = p_best_v_bw
 
             # Select best audio representation in this period (prefer role='main' or first audio adaptation)
             p_audio_rep = None
