@@ -61,6 +61,7 @@
 
   function isMediaSegment(url) {
     if (!url || typeof url !== "string") return true;
+    if (url.startsWith("blob:") || url.startsWith("data:")) return true;
     const lower = url.toLowerCase();
 
     // Never filter out stream manifests

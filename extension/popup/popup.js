@@ -96,6 +96,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function isMediaSegment(url) {
     if (!url || typeof url !== "string") return true;
+    if (url.startsWith("blob:") || url.startsWith("data:")) return true;
     const lower = url.toLowerCase();
 
     // Never filter out stream manifests
@@ -150,28 +151,34 @@ document.addEventListener("DOMContentLoaded", () => {
 
             const validStreams = [];
             rawStreams.forEach((streamUrl) => {
+              let filename = "";
+              try {
+                const parsed = new URL(streamUrl);
+                filename = parsed.pathname.split("/").filter(Boolean).pop() || "";
+              } catch (e) {}
+
               let label = "Video Stream";
               let badge = "STREAM";
               let priority = 5;
 
               if (streamUrl.includes(".mpd")) {
-                label = "DASH Full Video Stream (.mpd)";
+                label = filename ? `DASH: ${filename}` : "DASH Full Video Stream (.mpd)";
                 badge = "DASH";
                 priority = 1;
               } else if (streamUrl.includes(".m3u8")) {
-                label = "HLS Full Video Stream (.m3u8)";
+                label = filename ? `HLS: ${filename}` : "HLS Full Video Stream (.m3u8)";
                 badge = "HLS";
                 priority = 2;
               } else if (streamUrl.includes(".mp4")) {
-                label = "Full MP4 Video (Original)";
+                label = filename ? `MP4: ${filename}` : "Full MP4 Video (Original)";
                 badge = "MP4";
                 priority = 3;
               } else if (streamUrl.includes(".webm")) {
-                label = "Full WebM Video";
+                label = filename ? `WebM: ${filename}` : "Full WebM Video";
                 badge = "WEBM";
                 priority = 4;
               } else if (streamUrl.includes(".mp3") || streamUrl.includes(".m4a")) {
-                label = "Audio Stream";
+                label = filename ? `Audio: ${filename}` : "Audio Stream";
                 badge = "MP3";
                 priority = 5;
               } else if (streamUrl.includes("youtube.com") || streamUrl.includes("youtu.be")) {
@@ -180,7 +187,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 priority = 1;
               }
 
-              validStreams.push({ url: streamUrl, label: label, badge: badge, priority: priority });
+              validStreams.push({ url: streamUrl, label: label, badge: badge, priority: priority, filename: filename });
             });
 
             validStreams.sort((a, b) => a.priority - b.priority);
@@ -193,7 +200,14 @@ document.addEventListener("DOMContentLoaded", () => {
               const row = document.createElement("div");
               row.className = "media-item";
               row.title = item.url;
-              row.innerHTML = `<span class="media-item-title">${item.label}</span><span class="media-item-badge">${item.badge}</span>`;
+              const cleanUrlHint = item.url.split("?")[0].replace(/^https?:\/\//, "");
+              row.innerHTML = `
+                <div class="media-item-info">
+                  <span class="media-item-title">${item.label}</span>
+                  <span class="media-item-url-hint">${cleanUrlHint}</span>
+                </div>
+                <span class="media-item-badge">${item.badge}</span>
+              `;
               row.addEventListener("click", () => {
                 const title = activeTab.title ? activeTab.title.replace(/[\\/:*?"<>|]/g, "_").trim() : "video";
                 const ext = item.badge.toLowerCase() === "hls" || item.badge.toLowerCase() === "dash" || item.badge.toLowerCase() === "youtube" ? "mp4" : item.badge.toLowerCase();
