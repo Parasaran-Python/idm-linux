@@ -136,11 +136,17 @@ class DASHParser:
         """Parse ISO 8601 duration string into seconds (e.g., PT2H25M35.042S -> 8735.042)."""
         if not duration_str:
             return 0.0
-        pattern = r"^P(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:([\d.]+)S)?)?$"
+        pattern = r"^P(?:(\d+)Y)?(?:(\d+)M)?(?:(\d+)W)?(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:([\d.]+)S)?)?$"
         match = re.match(pattern, duration_str)
         if match:
-            days, hours, minutes, seconds = match.groups()
+            years, months, weeks, days, hours, minutes, seconds = match.groups()
             total = 0.0
+            if years:
+                total += float(years) * 31536000.0
+            if months:
+                total += float(months) * 2592000.0
+            if weeks:
+                total += float(weeks) * 604800.0
             if days:
                 total += float(days) * 86400.0
             if hours:
@@ -151,15 +157,36 @@ class DASHParser:
                 total += float(seconds)
             return total
 
-        days = re.search(r"(\d+)D", duration_str)
-        hours = re.search(r"(\d+)H", duration_str)
-        minutes = re.search(r"(\d+)M", duration_str)
-        seconds = re.search(r"([\d.]+)S", duration_str)
-        d = float(days.group(1)) if days else 0.0
-        h = float(hours.group(1)) if hours else 0.0
-        m = float(minutes.group(1)) if minutes else 0.0
-        s = float(seconds.group(1)) if seconds else 0.0
-        return d * 86400.0 + h * 3600.0 + m * 60.0 + s
+        # Fallback splitting by T to avoid Month vs Minute ambiguity
+        if "T" in duration_str:
+            date_part, time_part = duration_str.split("T", 1)
+        else:
+            date_part, time_part = duration_str, ""
+
+        years = re.search(r"(\d+)Y", date_part)
+        months = re.search(r"(\d+)M", date_part)
+        weeks = re.search(r"(\d+)W", date_part)
+        days = re.search(r"(\d+)D", date_part)
+        hours = re.search(r"(\d+)H", time_part)
+        minutes = re.search(r"(\d+)M", time_part)
+        seconds = re.search(r"([\d.]+)S", time_part)
+
+        total = 0.0
+        if years:
+            total += float(years.group(1)) * 31536000.0
+        if months:
+            total += float(months.group(1)) * 2592000.0
+        if weeks:
+            total += float(weeks.group(1)) * 604800.0
+        if days:
+            total += float(days.group(1)) * 86400.0
+        if hours:
+            total += float(hours.group(1)) * 3600.0
+        if minutes:
+            total += float(minutes.group(1)) * 60.0
+        if seconds:
+            total += float(seconds.group(1))
+        return total
 
     @staticmethod
     def _local_tag(elem) -> str:
@@ -745,13 +772,22 @@ class StreamDownloader:
             self._speed_bytes = 0
             self._speed_time = now
 
+        eta = 0
+        if self.current_speed > 0:
+            if self.total_bytes > self.downloaded_bytes:
+                eta = int((self.total_bytes - self.downloaded_bytes) / self.current_speed)
+            elif self.total_segments > self.downloaded_segments and self.downloaded_segments > 0:
+                avg_seg_size = self.downloaded_bytes / self.downloaded_segments
+                rem_bytes = (self.total_segments - self.downloaded_segments) * avg_seg_size
+                eta = int(rem_bytes / self.current_speed)
+
         stats = {
             "download_id": self.download_id,
             "status": self.status,
             "downloaded_bytes": self.downloaded_bytes,
             "total_bytes": self.total_bytes,
             "speed": int(self.current_speed),
-            "eta": 0,
+            "eta": eta,
             "segments_done": self.downloaded_segments,
             "total_segments": self.total_segments,
         }
