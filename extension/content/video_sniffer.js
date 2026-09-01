@@ -531,6 +531,10 @@
           if (chrome.runtime.lastError) { /* ignore */ }
         });
       } catch (err) {}
+      // Proactively fetch formats for DASH/HLS manifests to show all qualities
+      if (e.detail.url.includes(".mpd") || e.detail.url.includes(".m3u8")) {
+        fetchFormatsForCurrentPage();
+      }
       repositionBar();
     }
   });
@@ -553,6 +557,10 @@
   chrome.runtime.onMessage.addListener((msg) => {
     if (msg.action === "idm_media_detected" && msg.streamUrl && !isMediaSegment(msg.streamUrl)) {
       capturedStreams.set(msg.streamUrl, { format: msg.contentType || "Stream" });
+      // Proactively fetch formats for DASH/HLS manifests to show all qualities
+      if (msg.streamUrl.includes(".mpd") || msg.streamUrl.includes(".m3u8")) {
+        fetchFormatsForCurrentPage();
+      }
       repositionBar();
     }
   });
