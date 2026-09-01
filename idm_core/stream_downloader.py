@@ -51,6 +51,11 @@ class HLSParser:
             if line.startswith("#"):
                 if line.startswith("#EXT-X-KEY"):
                     self.key_info = line
+                elif line.startswith("#EXT-X-MAP"):
+                    m = re.search(r'URI=["\']([^"\']+)["\']', line)
+                    if m:
+                        init_url = self._resolve_url(base_url, m.group(1))
+                        segments.append(init_url)
                 continue
             # Resolved segment URL
             seg_url = self._resolve_url(base_url, line)
@@ -639,7 +644,10 @@ class StreamDownloader:
             self.save_path = os.path.splitext(self.save_path)[0] + ".mp4"
 
         # Check if we have separate audio and video tracks (e.g. DASH)
-        if getattr(self, "audio_segments", None) and len(self.audio_segments) > 0:
+        has_video = bool(getattr(self, "video_segments", None) and len(self.video_segments) > 0)
+        has_audio = bool(getattr(self, "audio_segments", None) and len(self.audio_segments) > 0)
+
+        if has_video and has_audio:
             v_count = len(self.video_segments)
             v_files = self.segment_files[:v_count]
             a_files = self.segment_files[v_count:]
@@ -672,6 +680,25 @@ class StreamDownloader:
             else:
                 if os.path.exists(v_merged):
                     shutil.copyfile(v_merged, self.save_path)
+        elif not has_video and has_audio:
+            # Audio-only DASH stream
+            temp_dir = self.storage.get_temp_dir(self.download_id)
+            a_merged = os.path.join(temp_dir, "track_audio.mp4")
+            with open(a_merged, "wb") as outfile:
+                for af in self.segment_files:
+                    if os.path.exists(af):
+                        with open(af, "rb") as infile:
+                            shutil.copyfileobj(infile, outfile, length=1024 * 1024)
+            if shutil.which("ffmpeg") and self.save_path.endswith((".mp4", ".m4a", ".aac", ".mp3", ".mkv")):
+                try:
+                    cmd = ["ffmpeg", "-y", "-i", a_merged, "-c", "copy", self.save_path]
+                    subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
+                except Exception as e:
+                    self.log(f"ffmpeg remux failed ({e}), falling back to direct audio stream.")
+                    if os.path.exists(a_merged):
+                        shutil.copyfile(a_merged, self.save_path)
+            elif os.path.exists(a_merged):
+                shutil.copyfile(a_merged, self.save_path)
         else:
             # Single stream (HLS TS chunks or multiplexed DASH)
             raw_ts_path = self.save_path if self.save_path.endswith(".ts") else self.save_path + ".temp.ts"
