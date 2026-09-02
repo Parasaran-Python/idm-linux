@@ -107,8 +107,9 @@ class TestExtensionManifests(unittest.TestCase):
             self.assertTrue(all(c in "abcdefghijklmnop" for c in cid))
 
     def test_extension_packaging_script(self):
-        pkg_script = os.path.join(self.repo_root, "scripts", "package_extensions.sh")
-        res = subprocess.run(["bash", pkg_script], cwd=self.repo_root, capture_output=True, text=True)
+        import sys
+        pkg_script = os.path.join(self.repo_root, "scripts", "package_extensions.py")
+        res = subprocess.run([sys.executable, pkg_script], cwd=self.repo_root, capture_output=True, text=True)
         self.assertEqual(res.returncode, 0, f"Packaging failed: {res.stderr}")
 
         chrome_zip = os.path.join(self.repo_root, "dist", "idm-linux-extension-chrome-mv3.zip")

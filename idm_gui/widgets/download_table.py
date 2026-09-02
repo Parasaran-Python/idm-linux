@@ -6,6 +6,7 @@ import datetime
 import os
 import subprocess
 from typing import Any, Dict, List, Optional
+from idm_core.platform import open_path, reveal_in_file_manager
 from PyQt6.QtCore import QItemSelectionModel, QPoint, Qt, pyqtSignal
 from PyQt6.QtGui import QAction, QColor, QFont
 from PyQt6.QtWidgets import (
@@ -210,7 +211,7 @@ class DownloadTableWidget(QTableWidget):
                 path = dl.get("save_path")
                 if path and os.path.exists(path):
                     try:
-                        subprocess.Popen(["xdg-open", path])
+                        open_path(path)
                         return
                     except Exception:
                         pass
@@ -259,12 +260,11 @@ class DownloadTableWidget(QTableWidget):
             if action == open_act:
                 dl = self._downloads_map.get(dl_id)
                 if dl and dl.get("save_path") and os.path.exists(dl["save_path"]):
-                    subprocess.Popen(["xdg-open", dl["save_path"]])
+                    open_path(dl["save_path"])
             elif action == folder_act:
                 dl = self._downloads_map.get(dl_id)
                 if dl and dl.get("save_path"):
-                    folder = os.path.dirname(dl["save_path"])
-                    subprocess.Popen(["xdg-open", folder])
+                    reveal_in_file_manager(dl["save_path"])
             elif action == resume_act:
                 self.action_requested.emit("resume", dl_id)
             elif action == pause_act:

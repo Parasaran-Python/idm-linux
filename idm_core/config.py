@@ -5,11 +5,18 @@ Configuration and Defaults for IDM Linux
 import os
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
+from idm_core.platform import (
+    get_config_dir,
+    get_database_path,
+    get_default_ipc_endpoint,
+    get_download_dir,
+    get_temp_dir,
+)
 
 
 @dataclass
 class Config:
-    config_dir: str = field(default_factory=lambda: os.path.expanduser("~/.config/idm-linux"))
+    config_dir: str = field(default_factory=get_config_dir)
     database_path: Optional[str] = None
     socket_path: Optional[str] = None
     temp_dir: Optional[str] = None
@@ -48,15 +55,21 @@ class Config:
         "html", "htm", "php", "asp", "aspx", "jsp", "css", "js", "json", "xml"
     ])
 
+    @property
+    def ipc_endpoint(self) -> str:
+        return self.socket_path or get_default_ipc_endpoint(self.config_dir)
+
     def __post_init__(self):
+        if not self.config_dir:
+            self.config_dir = get_config_dir()
         if not self.database_path:
-            self.database_path = os.path.join(self.config_dir, "idm.db")
+            self.database_path = get_database_path(self.config_dir)
         if not self.socket_path:
-            self.socket_path = os.path.join(self.config_dir, "idm.sock")
+            self.socket_path = get_default_ipc_endpoint(self.config_dir)
         if not self.temp_dir:
-            self.temp_dir = os.path.join(self.config_dir, "temp")
+            self.temp_dir = get_temp_dir(self.config_dir)
         if not self.download_dir:
-            self.download_dir = os.path.expanduser("~/Downloads")
+            self.download_dir = get_download_dir()
 
     def ensure_directories(self):
         """Create necessary config, temp, and download category directories."""

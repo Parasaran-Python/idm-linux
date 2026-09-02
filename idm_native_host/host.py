@@ -48,27 +48,37 @@ def ensure_idm_running(client: IPCClient) -> bool:
     env = os.environ.copy()
     repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     py_path = env.get("PYTHONPATH", "")
-    env["PYTHONPATH"] = f"/usr/lib/python3/dist-packages:{repo_root}:{py_path}".strip(":")
+    env["PYTHONPATH"] = f"{repo_root}:{py_path}".strip(":")
 
-    uid = os.getuid()
-    env.setdefault("DISPLAY", ":0")
-    env.setdefault("XDG_RUNTIME_DIR", f"/run/user/{uid}")
-    if os.path.exists(f"/run/user/{uid}/wayland-0"):
-        env.setdefault("WAYLAND_DISPLAY", "wayland-0")
-    xauth = os.path.expanduser("~/.Xauthority")
-    if os.path.exists(xauth):
-        env.setdefault("XAUTHORITY", xauth)
+    popen_kwargs: Dict[str, Any] = {
+        "env": env,
+        "stdout": subprocess.DEVNULL,
+        "stderr": subprocess.DEVNULL,
+    }
+
+    if sys.platform == "win32":
+        creationflags = 0
+        if hasattr(subprocess, "CREATE_NO_WINDOW"):
+            creationflags |= subprocess.CREATE_NO_WINDOW
+        if hasattr(subprocess, "DETACHED_PROCESS"):
+            creationflags |= subprocess.DETACHED_PROCESS
+        popen_kwargs["creationflags"] = creationflags
+    else:
+        popen_kwargs["start_new_session"] = True
+        if hasattr(os, "getuid"):
+            uid = os.getuid()
+            env.setdefault("DISPLAY", ":0")
+            env.setdefault("XDG_RUNTIME_DIR", f"/run/user/{uid}")
+            if os.path.exists(f"/run/user/{uid}/wayland-0"):
+                env.setdefault("WAYLAND_DISPLAY", "wayland-0")
+            xauth = os.path.expanduser("~/.Xauthority")
+            if os.path.exists(xauth):
+                env.setdefault("XAUTHORITY", xauth)
 
     # 1. Try launching GUI app via python module
     try:
         cmd = [sys.executable, "-m", "idm_gui.app", "--minimized"]
-        subprocess.Popen(
-            cmd,
-            env=env,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            start_new_session=True
-        )
+        subprocess.Popen(cmd, **popen_kwargs)
         for _ in range(20):
             time.sleep(0.15)
             if client.is_server_running():
@@ -80,13 +90,7 @@ def ensure_idm_running(client: IPCClient) -> bool:
     installed_gui = os.path.expanduser("~/.local/bin/idm-gui")
     if os.path.exists(installed_gui):
         try:
-            subprocess.Popen(
-                [installed_gui, "--minimized"],
-                env=env,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                start_new_session=True
-            )
+            subprocess.Popen([installed_gui, "--minimized"], **popen_kwargs)
             for _ in range(15):
                 time.sleep(0.15)
                 if client.is_server_running():
@@ -97,13 +101,7 @@ def ensure_idm_running(client: IPCClient) -> bool:
     # 3. Fallback to headless daemon directly
     try:
         cmd = [sys.executable, "-m", "idm_ipc.daemon"]
-        subprocess.Popen(
-            cmd,
-            env=env,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            start_new_session=True
-        )
+        subprocess.Popen(cmd, **popen_kwargs)
         for _ in range(15):
             time.sleep(0.15)
             if client.is_server_running():
@@ -144,6 +142,14 @@ def handle_browser_message(msg: Dict[str, Any], ipc_client: Optional[IPCClient] 
 
 
 def main():
+    if sys.platform == "win32":
+        try:
+            import msvcrt
+            msvcrt.setmode(sys.stdin.fileno(), os.O_BINARY)
+            msvcrt.setmode(sys.stdout.fileno(), os.O_BINARY)
+        except Exception:
+            pass
+
     client = IPCClient()
     while True:
         try:

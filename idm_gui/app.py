@@ -12,6 +12,7 @@ from PyQt6.QtGui import QIcon, QPixmap
 from PyQt6.QtWidgets import QApplication
 from idm_core.config import Config
 from idm_core.engine import DownloadEngine
+from idm_core.platform import is_linux, setup_windows_app_id
 from idm_gui.main_window import MainWindow
 from idm_gui.styles import IDM_DARK_THEME
 from idm_gui.tray import IDMTrayIcon, create_tray_icon_pixmap, create_app_icon
@@ -71,8 +72,12 @@ def main():
             client.send_request({"action": "show_gui"})
         sys.exit(0)
 
-    # Enable native window decorations & titlebar controls
-    os.environ.setdefault("QT_QPA_PLATFORM", "xcb;wayland")
+    # Configure Windows App ID for taskbar grouping & notifications
+    setup_windows_app_id()
+
+    # Enable native window decorations & titlebar controls on Linux
+    if is_linux():
+        os.environ.setdefault("QT_QPA_PLATFORM", "xcb;wayland")
 
     # 2. Launch Main Qt Application
     app = QApplication(sys.argv)

@@ -53,17 +53,28 @@ def get_default_chrome_extension_ids(repo_root: str) -> List[str]:
 
 
 def create_wrapper_script(repo_root: str) -> str:
-    """Create executable shell wrapper ensuring correct Python interpreter and PYTHONPATH."""
+    """Create executable shell wrapper or batch wrapper ensuring correct Python interpreter and PYTHONPATH."""
+    py_exec = sys.executable or ("python.exe" if sys.platform == "win32" else "/usr/bin/python3")
+
+    if sys.platform == "win32":
+        wrapper_path = os.path.join(repo_root, "scripts", "idm-native-host-wrapper.bat")
+        script_content = f"""@echo off
+setlocal
+set "PYTHONPATH={repo_root};%PYTHONPATH%"
+"{py_exec}" -m idm_native_host.host %*
+"""
+        with open(wrapper_path, "w", encoding="utf-8") as f:
+            f.write(script_content)
+        return wrapper_path
+
     wrapper_path = os.path.join(repo_root, "scripts", "idm-native-host-wrapper.sh")
-    py_exec = sys.executable or "/usr/bin/python3"
-    
     script_content = f"""#!/bin/bash
 export PYTHONPATH="/usr/lib/python3/dist-packages:/usr/local/lib/python3.14/dist-packages:{repo_root}:$PYTHONPATH"
 exec "{py_exec}" -m idm_native_host.host "$@"
 """
     with open(wrapper_path, "w", encoding="utf-8") as f:
         f.write(script_content)
-    
+
     st = os.stat(wrapper_path)
     os.chmod(wrapper_path, st.st_mode | stat.S_IEXEC | stat.S_IXGRP | stat.S_IXOTH)
     return wrapper_path
@@ -108,45 +119,90 @@ def install_manifests(custom_chrome_ids: Optional[List[str]] = None):
         ]
     }
 
-    chromium_targets = [
-        os.path.join(home, ".config", "google-chrome", "NativeMessagingHosts"),
-        os.path.join(home, ".config", "chromium", "NativeMessagingHosts"),
-        os.path.join(home, ".config", "BraveSoftware", "Brave-Browser", "NativeMessagingHosts"),
-        os.path.join(home, ".config", "microsoft-edge", "NativeMessagingHosts"),
-        os.path.join(home, ".config", "opera", "NativeMessagingHosts"),
-        os.path.join(home, ".config", "vivaldi", "NativeMessagingHosts"),
-    ]
-
-    firefox_targets = [
-        os.path.join(home, ".mozilla", "native-messaging-hosts"),
-        os.path.join(home, ".librewolf", "native-messaging-hosts"),
-    ]
-
     installed_count = 0
 
-    # Install for Chromium family
-    for target_dir in chromium_targets:
+    # Windows: Register manifests via Windows Registry (HKCU\Software\...\NativeMessagingHosts)
+    if sys.platform == "win32":
         try:
-            os.makedirs(target_dir, exist_ok=True)
-            manifest_file = os.path.join(target_dir, f"{HOST_NAME}.json")
-            with open(manifest_file, "w", encoding="utf-8") as f:
-                json.dump(chrome_manifest, f, indent=2)
-            print(f"[OK] Installed Chrome native host manifest: {manifest_file}")
-            installed_count += 1
-        except Exception as e:
-            print(f"[SKIP] Failed to write {target_dir}: {e}")
+            import winreg
 
-    # Install for Firefox family
-    for target_dir in firefox_targets:
-        try:
-            os.makedirs(target_dir, exist_ok=True)
-            manifest_file = os.path.join(target_dir, f"{HOST_NAME}.json")
-            with open(manifest_file, "w", encoding="utf-8") as f:
+            manifests_dir = os.path.join(repo_root, "scripts")
+            chrome_manifest_file = os.path.join(manifests_dir, f"{HOST_NAME}.json")
+            firefox_manifest_file = os.path.join(manifests_dir, f"{HOST_NAME}.firefox.json")
+
+            with open(chrome_manifest_file, "w", encoding="utf-8") as f:
+                json.dump(chrome_manifest, f, indent=2)
+            with open(firefox_manifest_file, "w", encoding="utf-8") as f:
                 json.dump(firefox_manifest, f, indent=2)
-            print(f"[OK] Installed Firefox native host manifest: {manifest_file}")
-            installed_count += 1
+
+            reg_paths_chrome = [
+                r"Software\Google\Chrome\NativeMessagingHosts",
+                r"Software\Microsoft\Edge\NativeMessagingHosts",
+                r"Software\BraveSoftware\Brave-Browser\NativeMessagingHosts",
+            ]
+
+            for rp in reg_paths_chrome:
+                try:
+                    full_key = f"{rp}\\{HOST_NAME}"
+                    with winreg.CreateKey(winreg.HKEY_CURRENT_USER, full_key) as k:
+                        winreg.SetValueEx(k, "", 0, winreg.REG_SZ, chrome_manifest_file)
+                    print(f"[OK] Registered Windows Registry key: HKCU\\{full_key}")
+                    installed_count += 1
+                except Exception as e:
+                    print(f"[SKIP] Failed to register HKCU\\{rp}: {e}")
+
+            # Firefox
+            try:
+                ff_key = f"Software\\Mozilla\\NativeMessagingHosts\\{HOST_NAME}"
+                with winreg.CreateKey(winreg.HKEY_CURRENT_USER, ff_key) as k:
+                    winreg.SetValueEx(k, "", 0, winreg.REG_SZ, firefox_manifest_file)
+                print(f"[OK] Registered Windows Registry key: HKCU\\{ff_key}")
+                installed_count += 1
+            except Exception as e:
+                print(f"[SKIP] Failed to register Firefox HKCU\\{ff_key}: {e}")
+
         except Exception as e:
-            print(f"[SKIP] Failed to write {target_dir}: {e}")
+            print(f"[ERROR] Windows registry registration failed: {e}")
+
+    else:
+        # Linux / POSIX filesystem directories
+        chromium_targets = [
+            os.path.join(home, ".config", "google-chrome", "NativeMessagingHosts"),
+            os.path.join(home, ".config", "chromium", "NativeMessagingHosts"),
+            os.path.join(home, ".config", "BraveSoftware", "Brave-Browser", "NativeMessagingHosts"),
+            os.path.join(home, ".config", "microsoft-edge", "NativeMessagingHosts"),
+            os.path.join(home, ".config", "opera", "NativeMessagingHosts"),
+            os.path.join(home, ".config", "vivaldi", "NativeMessagingHosts"),
+        ]
+
+        firefox_targets = [
+            os.path.join(home, ".mozilla", "native-messaging-hosts"),
+            os.path.join(home, ".librewolf", "native-messaging-hosts"),
+        ]
+
+        # Install for Chromium family
+        for target_dir in chromium_targets:
+            try:
+                os.makedirs(target_dir, exist_ok=True)
+                manifest_file = os.path.join(target_dir, f"{HOST_NAME}.json")
+                with open(manifest_file, "w", encoding="utf-8") as f:
+                    json.dump(chrome_manifest, f, indent=2)
+                print(f"[OK] Installed Chrome native host manifest: {manifest_file}")
+                installed_count += 1
+            except Exception as e:
+                print(f"[SKIP] Failed to write {target_dir}: {e}")
+
+        # Install for Firefox family
+        for target_dir in firefox_targets:
+            try:
+                os.makedirs(target_dir, exist_ok=True)
+                manifest_file = os.path.join(target_dir, f"{HOST_NAME}.json")
+                with open(manifest_file, "w", encoding="utf-8") as f:
+                    json.dump(firefox_manifest, f, indent=2)
+                print(f"[OK] Installed Firefox native host manifest: {manifest_file}")
+                installed_count += 1
+            except Exception as e:
+                print(f"[SKIP] Failed to write {target_dir}: {e}")
 
     print(f"\nSuccessfully installed IDM Native Messaging Host to {installed_count} browser locations.")
     print(f"Host binary wrapper: {wrapper_path}")
