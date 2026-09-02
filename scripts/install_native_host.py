@@ -55,6 +55,8 @@ def get_default_chrome_extension_ids(repo_root: str) -> List[str]:
 def create_wrapper_script(repo_root: str) -> str:
     """Create executable shell wrapper or batch wrapper ensuring correct Python interpreter and PYTHONPATH."""
     py_exec = sys.executable or ("python.exe" if sys.platform == "win32" else "/usr/bin/python3")
+    if sys.platform == "win32" and py_exec.lower().endswith("pythonw.exe"):
+        py_exec = py_exec[:-10] + "python.exe"
 
     if sys.platform == "win32":
         # If running from a compiled PyInstaller distribution, use the native .exe directly

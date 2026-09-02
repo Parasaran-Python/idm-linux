@@ -168,10 +168,10 @@ def resolve_binary(base_name: str) -> Optional[str]:
     # 1. PyInstaller bundled directory
     if hasattr(sys, "_MEIPASS"):
         candidate = os.path.join(sys._MEIPASS, exe_name)
-        if os.path.isfile(candidate) and os.access(candidate, os.X_OK):
+        if os.path.isfile(candidate) and (is_windows() or os.access(candidate, os.X_OK)):
             return candidate
         candidate_bin = os.path.join(sys._MEIPASS, "bin", exe_name)
-        if os.path.isfile(candidate_bin) and os.access(candidate_bin, os.X_OK):
+        if os.path.isfile(candidate_bin) and (is_windows() or os.access(candidate_bin, os.X_OK)):
             return candidate_bin
 
     # 2. Next to running executable or script
