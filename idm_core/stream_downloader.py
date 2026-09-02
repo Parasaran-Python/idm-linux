@@ -14,6 +14,7 @@ import urllib.request
 import xml.etree.ElementTree as ET
 from typing import Any, Callable, Dict, List, Optional
 from idm_core.config import Config
+from idm_core.platform import resolve_binary
 from idm_core.speed_limiter import SpeedLimiter
 from idm_core.storage import StorageManager
 
@@ -880,11 +881,12 @@ class StreamDownloader:
             self._finalize_stream()
 
         except Exception as e:
-            if shutil.which("ffmpeg") and not self._stop_event.is_set():
+            ffmpeg_bin = resolve_binary("ffmpeg")
+            if ffmpeg_bin and not self._stop_event.is_set():
                 self.log(f"Direct segment parsing encountered '{e}'. Falling back to ffmpeg stream capture...")
                 try:
                     os.makedirs(os.path.dirname(os.path.abspath(self.save_path)), exist_ok=True)
-                    cmd = ["ffmpeg", "-y"]
+                    cmd = [ffmpeg_bin, "-y"]
                     if self.headers:
                         hdr_str = "".join(f"{k}: {v}\r\n" for k, v in self.headers.items() if k.lower() in ["user-agent", "referer", "cookie"])
                         if hdr_str:
@@ -984,10 +986,11 @@ class StreamDownloader:
                         with open(af, "rb") as infile:
                             shutil.copyfileobj(infile, outfile, length=1024 * 1024)
 
-            if shutil.which("ffmpeg"):
+            ffmpeg_bin = resolve_binary("ffmpeg")
+            if ffmpeg_bin:
                 self.log("Running ffmpeg muxing to merge video and audio streams...")
                 try:
-                    cmd = ["ffmpeg", "-y", "-i", v_merged, "-i", a_merged, "-c", "copy", self.save_path]
+                    cmd = [ffmpeg_bin, "-y", "-i", v_merged, "-i", a_merged, "-c", "copy", self.save_path]
                     subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
                 except Exception as e:
                     self.log(f"ffmpeg muxing failed ({e}), falling back to direct video stream.")
@@ -1005,9 +1008,10 @@ class StreamDownloader:
                     if os.path.exists(af):
                         with open(af, "rb") as infile:
                             shutil.copyfileobj(infile, outfile, length=1024 * 1024)
-            if shutil.which("ffmpeg") and self.save_path.endswith((".mp4", ".m4a", ".aac", ".mp3", ".mkv")):
+            ffmpeg_bin = resolve_binary("ffmpeg")
+            if ffmpeg_bin and self.save_path.endswith((".mp4", ".m4a", ".aac", ".mp3", ".mkv")):
                 try:
-                    cmd = ["ffmpeg", "-y", "-i", a_merged, "-c", "copy", self.save_path]
+                    cmd = [ffmpeg_bin, "-y", "-i", a_merged, "-c", "copy", self.save_path]
                     subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
                 except Exception as e:
                     self.log(f"ffmpeg remux failed ({e}), falling back to direct audio stream.")
@@ -1025,10 +1029,11 @@ class StreamDownloader:
                             shutil.copyfileobj(infile, outfile, length=1024 * 1024)
 
             # If destination is MP4/MKV and ffmpeg is available, remux losslessly
-            if shutil.which("ffmpeg") and (self.save_path.endswith(".mp4") or self.save_path.endswith(".mkv")):
+            ffmpeg_bin = resolve_binary("ffmpeg")
+            if ffmpeg_bin and (self.save_path.endswith(".mp4") or self.save_path.endswith(".mkv")):
                 self.log("Running ffmpeg stream copy into MP4 container...")
                 try:
-                    cmd = ["ffmpeg", "-y", "-i", raw_ts_path, "-c", "copy", self.save_path]
+                    cmd = [ffmpeg_bin, "-y", "-i", raw_ts_path, "-c", "copy", self.save_path]
                     subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
                     if os.path.exists(raw_ts_path) and raw_ts_path != self.save_path:
                         os.remove(raw_ts_path)

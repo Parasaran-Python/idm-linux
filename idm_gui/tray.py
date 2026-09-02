@@ -88,9 +88,13 @@ class IDMTrayIcon(QSystemTrayIcon):
             self.main_window.activateWindow()
 
     def show_notification(self, title: str, message: str):
-        self.showMessage(
-            title,
-            message,
-            QSystemTrayIcon.MessageIcon.Information,
-            5000
-        )
+        from idm_core.platform import show_desktop_notification
+        icons_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "extension", "icons")
+        icon_path = os.path.join(icons_dir, "icon128.png")
+        if not show_desktop_notification(title, message, icon_path=icon_path):
+            self.showMessage(
+                title,
+                message,
+                QSystemTrayIcon.MessageIcon.Information,
+                5000
+            )

@@ -59,22 +59,12 @@ jobs:
           ./appimagetool --appimage-extract
           ARCH=x86_64 ./squashfs-root/AppRun dist/AppDir dist/idm-linux-x86_64.AppImage || true
 
-      # 4. Build Chrome MV3 Extension ZIP
-      - name: Package Chrome Extension (MV3)
+      # 4. Package Extensions (Chrome MV3 & Firefox)
+      - name: Package Browser Extensions
         run: |
-          mkdir -p dist/chrome-extension
-          cp -r extension/background extension/content extension/popup extension/icons extension/manifest.json dist/chrome-extension/
-          cd dist/chrome-extension && zip -r ../idm-linux-extension-chrome-mv3.zip . && cd ../..
+          python scripts/package_extensions.py
 
-      # 5. Build Firefox Extension ZIP
-      - name: Package Firefox Extension (MV2/MV3)
-        run: |
-          mkdir -p dist/firefox-extension
-          cp -r extension/background extension/content extension/popup extension/icons dist/firefox-extension/
-          cp extension/manifest.firefox.json dist/firefox-extension/manifest.json
-          cd dist/firefox-extension && zip -r ../idm-linux-extension-firefox.zip . && cd ../..
-
-      # 6. Upload Artifacts for Workflow Run
+      # 5. Upload Artifacts for Workflow Run
       - name: Upload Build Artifacts
         uses: actions/upload-artifact@v7
         with:
@@ -83,9 +73,10 @@ jobs:
             dist/*.whl
             dist/*.tar.gz
             dist/*.zip
+            dist/*.xpi
             dist/*.AppImage
 
-      # 7. Create GitHub Release (on tag)
+      # 6. Create GitHub Release (on tag)
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/tags/')
@@ -94,7 +85,52 @@ jobs:
             dist/*.whl
             dist/*.tar.gz
             dist/*.zip
+            dist/*.xpi
             dist/*.AppImage
           generate_release_notes: true
           draft: false
           prerelease: false
+
+  build-windows:
+    name: Build Windows Application Packages
+    runs-on: windows-latest
+    needs: build-and-release
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install build tools & dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyinstaller PyQt6 yt-dlp
+
+      - name: Download Bundled Binaries (yt-dlp.exe)
+        run: |
+          python scripts/download_windows_binaries.py --ytdlp-only
+
+      - name: Build Standalone Windows Application (PyInstaller)
+        run: |
+          pyinstaller --noconfirm scripts/idm-linux.spec
+
+      - name: Create Windows Release ZIP
+        run: |
+          Compress-Archive -Path dist/idm-linux/* -DestinationPath dist/idm-windows-standalone-x86_64.zip -Force
+
+      - name: Upload Windows Artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: idm-windows-build-artifacts
+          path: dist/idm-windows-standalone-x86_64.zip
+
+      - name: Upload Windows Package to GitHub Release
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: dist/idm-windows-standalone-x86_64.zip

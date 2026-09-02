@@ -395,3 +395,76 @@ def setup_windows_app_id():
             ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(app_id)
         except Exception:
             pass
+
+
+def show_desktop_notification(title: str, message: str, icon_path: Optional[str] = None) -> bool:
+    """
+    Display native OS desktop notification.
+    - Windows: Uses windows-toasts if installed, or PowerShell WinRT ToastNotificationManager
+    - Linux: Uses notify-send if available
+    - macOS: Uses AppleScript display notification
+    Returns True if successfully dispatched, False if fallback to Qt tray is required.
+    """
+    safe_title = (title or "IDM Linux").replace('"', '\\"')
+    safe_msg = (message or "").replace('"', '\\"')
+
+    # 1. Windows: Try windows-toasts library
+    if is_windows():
+        try:
+            from windows_toasts import InteractableWindowsToaster, Toast, ToastDisplayImage
+            toaster = InteractableWindowsToaster("IDM Linux", "IDMLinux.IDM.App.1.0")
+            toast = Toast()
+            toast.text_fields = [title, message]
+            if icon_path and os.path.exists(icon_path):
+                toast.AddImage(ToastDisplayImage.fromPath(icon_path))
+            toaster.show_toast(toast)
+            return True
+        except Exception:
+            pass
+
+        # Windows PowerShell WinRT Toast Notification fallback
+        try:
+            ps_script = f"""
+            [Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] > $null
+            $template = [Windows.UI.Notifications.ToastNotificationManager]::GetTemplateContent([Windows.UI.Notifications.ToastTemplateType]::ToastText02)
+            $textNodes = $template.GetElementsByTagName("text")
+            $textNodes.Item(0).AppendChild($template.CreateTextNode("{safe_title}")) > $null
+            $textNodes.Item(1).AppendChild($template.CreateTextNode("{safe_msg}")) > $null
+            $notifier = [Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier("IDMLinux.IDM.App.1.0")
+            $notification = [Windows.UI.Notifications.ToastNotification]::new($template)
+            $notifier.Show($notification)
+            """
+            creationflags = 0
+            if hasattr(subprocess, "CREATE_NO_WINDOW"):
+                creationflags |= subprocess.CREATE_NO_WINDOW
+            subprocess.Popen(
+                ["powershell", "-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden", "-Command", ps_script],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                creationflags=creationflags
+            )
+            return True
+        except Exception:
+            pass
+
+    # 2. Linux: notify-send
+    if is_linux() and shutil.which("notify-send"):
+        try:
+            cmd = ["notify-send", title, message]
+            if icon_path and os.path.exists(icon_path):
+                cmd.extend(["-i", icon_path])
+            subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            return True
+        except Exception:
+            pass
+
+    # 3. macOS: AppleScript notification
+    if is_macos():
+        try:
+            ascript = f'display notification "{safe_msg}" with title "{safe_title}"'
+            subprocess.Popen(["osascript", "-e", ascript], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            return True
+        except Exception:
+            pass
+
+    return False

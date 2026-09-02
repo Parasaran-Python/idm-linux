@@ -98,6 +98,14 @@ class TestPlatformAbstraction(unittest.TestCase):
         # Should execute without throwing on any OS
         setup_windows_app_id()
 
+    def test_show_desktop_notification(self):
+        from idm_core.platform import show_desktop_notification
+        with patch("subprocess.Popen") as mock_popen, \
+             patch("shutil.which", return_value="/usr/bin/notify-send"):
+            res = show_desktop_notification("Test Title", "Test Message")
+            self.assertTrue(res)
+            mock_popen.assert_called()
+
 
 if __name__ == "__main__":
     unittest.main()
