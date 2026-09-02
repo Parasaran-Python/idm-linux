@@ -111,9 +111,9 @@ jobs:
           python -m pip install --upgrade pip
           pip install pyinstaller PyQt6 yt-dlp
 
-      - name: Download Bundled Binaries (yt-dlp.exe)
+      - name: Download Bundled Binaries (yt-dlp.exe & ffmpeg.exe)
         run: |
-          python scripts/download_windows_binaries.py --ytdlp-only
+          python scripts/download_windows_binaries.py
 
       - name: Build Standalone Windows Application (PyInstaller)
         run: |

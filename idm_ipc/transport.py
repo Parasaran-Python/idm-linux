@@ -454,6 +454,10 @@ class NamedPipeServerTransport(BaseServerTransport):
 
             # ConnectNamedPipe returns TRUE or FALSE with ERROR_PIPE_CONNECTED
             connected = ctypes.windll.kernel32.ConnectNamedPipe(h_pipe, None)
+            if not self._running:
+                ctypes.windll.kernel32.CloseHandle(h_pipe)
+                return None
+
             if not connected:
                 err = ctypes.windll.kernel32.GetLastError()
                 ERROR_PIPE_CONNECTED = 535
@@ -467,6 +471,18 @@ class NamedPipeServerTransport(BaseServerTransport):
 
     def stop(self):
         self._running = False
+        # Unblock pending ConnectNamedPipe so accept() thread can exit
+        try:
+            import ctypes
+            _setup_win32_named_pipes()
+            if ctypes.windll.kernel32.WaitNamedPipeW(self.pipe_name, 50):
+                h = ctypes.windll.kernel32.CreateFileW(
+                    self.pipe_name, 0, 0, None, 3, 0, None
+                )
+                if not _is_invalid_handle(h):
+                    ctypes.windll.kernel32.CloseHandle(h)
+        except Exception:
+            pass
 
 
 class NamedPipeClientTransport(BaseClientTransport):

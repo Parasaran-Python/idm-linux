@@ -39,7 +39,10 @@ def download_ytdlp(bin_dir: str):
     if os.path.exists(dest) and os.path.getsize(dest) > 1000000:
         print(f"[*] yt-dlp.exe already exists at {dest} ({os.path.getsize(dest)} bytes). Skipping.")
         return
-    download_file(YTDLP_URL, dest)
+    try:
+        download_file(YTDLP_URL, dest)
+    except Exception as e:
+        print(f"[WARN] Failed to download yt-dlp.exe: {e}")
 
 
 def download_ffmpeg(bin_dir: str):
@@ -59,9 +62,14 @@ def download_ffmpeg(bin_dir: str):
                         shutil.copyfileobj(src, dst)
                     print(f"[OK] Extracted {dest_ffmpeg}")
                     break
+    except Exception as e:
+        print(f"[WARN] Failed to download ffmpeg: {e}")
     finally:
         if os.path.exists(temp_zip):
-            os.remove(temp_zip)
+            try:
+                os.remove(temp_zip)
+            except Exception:
+                pass
 
 
 def main():

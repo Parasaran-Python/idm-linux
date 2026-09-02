@@ -18,27 +18,39 @@ class IPCClient:
         """Check if IDM daemon/GUI IPC is accessible."""
         if not self.transport.is_server_running():
             return False
+        conn = None
         try:
             conn = self.transport.connect(timeout=2.0)
             conn.settimeout(2.0)
             conn.sendall(encode_message({"action": "ping"}))
             res = decode_message(conn)
-            conn.close()
             return bool(res and res.get("pong"))
         except Exception:
             return False
+        finally:
+            if conn:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
 
     def send_request(self, payload: Dict[str, Any], timeout: float = 10.0) -> Dict[str, Any]:
         """Send command to IPC server and wait for reply."""
+        conn = None
         try:
             conn = self.transport.connect(timeout=timeout)
             conn.settimeout(timeout)
             conn.sendall(encode_message(payload))
             response = decode_message(conn)
-            conn.close()
             return response or {"status": "error", "error": "No response from server"}
         except Exception as e:
             return {"status": "error", "error": f"IPC error: {e}"}
+        finally:
+            if conn:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
 
     def ping(self) -> Dict[str, Any]:
         return self.send_request({"action": "ping"})
