@@ -1,47 +1,35 @@
-"""
-Unix Domain Socket IPC Server for IDM Linux Daemon & Desktop GUI
-"""
-
 import os
 import socket
 import threading
 from typing import Any, Dict, List, Optional, Set
 from idm_ipc.protocol import decode_message, encode_message
+from idm_ipc.transport import BaseConnection, BaseServerTransport, create_server_transport
 
 
 class IPCServer:
-    def __init__(self, engine: Any, socket_path: str):
+    def __init__(self, engine: Any, socket_path: Optional[str] = None, transport: Optional[BaseServerTransport] = None):
         self.engine = engine
         self.socket_path = socket_path
-        self._server_sock: Optional[socket.socket] = None
+        self.transport = transport or create_server_transport(socket_path)
         self._stop_event = threading.Event()
         self._thread: Optional[threading.Thread] = None
         self._client_threads: List[threading.Thread] = []
-        self._subscribers: Set[socket.socket] = set()
+        self._subscribers: Set[Any] = set()
         self._lock = threading.RLock()
 
         # Hook engine broadcast notifications to push to IPC subscribers
         self.engine.register_listener("*", self._broadcast_to_subscribers)
 
     def start(self):
-        """Start listening on Unix Domain Socket in a background thread."""
-        os.makedirs(os.path.dirname(os.path.abspath(self.socket_path)), exist_ok=True)
-        if os.path.exists(self.socket_path):
-            try:
-                os.remove(self.socket_path)
-            except Exception:
-                pass
-
+        """Start listening on IPC transport in a background thread."""
         self._stop_event.clear()
-        self._server_sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        self._server_sock.bind(self.socket_path)
-        self._server_sock.listen(16)
+        self.transport.start()
 
         self._thread = threading.Thread(target=self._accept_loop, daemon=True)
         self._thread.start()
 
     def stop(self):
-        """Cleanly shutdown server and remove socket file."""
+        """Cleanly shutdown server and transport."""
         self._stop_event.set()
         with self._lock:
             for s in list(self._subscribers):
@@ -51,30 +39,24 @@ class IPCServer:
                     pass
             self._subscribers.clear()
 
-        if self._server_sock:
-            try:
-                self._server_sock.close()
-            except Exception:
-                pass
-
-        if os.path.exists(self.socket_path):
-            try:
-                os.remove(self.socket_path)
-            except Exception:
-                pass
+        self.transport.stop()
 
     def _accept_loop(self):
         while not self._stop_event.is_set():
             try:
-                client_sock, _ = self._server_sock.accept()
-                t = threading.Thread(target=self._handle_client, args=(client_sock,), daemon=True)
+                conn = self.transport.accept()
+                if conn is None:
+                    if self._stop_event.is_set():
+                        break
+                    continue
+                t = threading.Thread(target=self._handle_client, args=(conn,), daemon=True)
                 self._client_threads.append(t)
                 t.start()
             except Exception:
                 if self._stop_event.is_set():
                     break
 
-    def _handle_client(self, client_sock: socket.socket):
+    def _handle_client(self, client_sock: Any):
         is_subscriber = False
         try:
             while not self._stop_event.is_set():

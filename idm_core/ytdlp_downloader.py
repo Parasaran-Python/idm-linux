@@ -12,6 +12,7 @@ import threading
 import time
 from typing import Any, Callable, Dict, List, Optional
 from idm_core.config import Config
+from idm_core.platform import resolve_binary
 
 
 class YTDLPDownloader:
@@ -66,7 +67,7 @@ class YTDLPDownloader:
 
     @staticmethod
     def is_ytdlp_available() -> bool:
-        return shutil.which("yt-dlp") is not None or shutil.which("youtube-dl") is not None
+        return resolve_binary("yt-dlp") is not None or resolve_binary("youtube-dl") is not None
 
     @staticmethod
     def is_video_platform_url(url: str) -> bool:
@@ -289,7 +290,7 @@ class YTDLPDownloader:
         if not cls.is_ytdlp_available() or not url:
             return {"title": "", "filename": "", "filesize": 0}
 
-        bin_name = "yt-dlp" if shutil.which("yt-dlp") else "youtube-dl"
+        bin_name = resolve_binary("yt-dlp") or resolve_binary("youtube-dl") or "yt-dlp"
         cmd = [
             bin_name,
             "-J",
@@ -402,7 +403,7 @@ class YTDLPDownloader:
         self._current_stream_downloaded = 0
         self._last_stream_pct = 0.0
 
-        bin_name = "yt-dlp" if shutil.which("yt-dlp") else "youtube-dl"
+        bin_name = resolve_binary("yt-dlp") or resolve_binary("youtube-dl") or "yt-dlp"
         dest_dir = os.path.dirname(self.save_path)
         os.makedirs(dest_dir, exist_ok=True)
 
@@ -437,8 +438,9 @@ class YTDLPDownloader:
             cmd.extend(["-f", "bestvideo+bestaudio/best"])
 
         # Automatic container merging via ffmpeg if available
-        if shutil.which("ffmpeg"):
-            cmd.extend(["--ffmpeg-location", shutil.which("ffmpeg")])
+        ffmpeg_bin = resolve_binary("ffmpeg")
+        if ffmpeg_bin:
+            cmd.extend(["--ffmpeg-location", ffmpeg_bin])
             if not is_audio and not self.save_path.lower().endswith((".mkv", ".webm")):
                 cmd.extend(["--merge-output-format", "mp4"])
 

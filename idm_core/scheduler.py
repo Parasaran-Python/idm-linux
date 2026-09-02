@@ -8,6 +8,7 @@ import subprocess
 import threading
 import time
 from typing import Any, Dict, List, Optional
+from idm_core.platform import system_power_action
 
 
 class Scheduler:
@@ -57,14 +58,8 @@ class Scheduler:
         """Execute post-download action (shutdown/sleep/notify)."""
         act = (action or "none").lower()
         if act == "shutdown":
-            try:
-                subprocess.run(["systemctl", "poweroff"], check=False)
-            except Exception:
-                pass
-        elif act == "sleep" or act == "suspend":
-            try:
-                subprocess.run(["systemctl", "suspend"], check=False)
-            except Exception:
-                pass
+            system_power_action("shutdown")
+        elif act in ["sleep", "suspend"]:
+            system_power_action("sleep")
         elif act == "notify":
             self.engine.notify("notification", {"title": "IDM Linux", "message": "All downloads in queue finished."})
