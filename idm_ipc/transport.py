@@ -450,7 +450,7 @@ def create_server_transport(endpoint: Optional[str] = None, config_dir: Optional
     """Create optimal server transport based on endpoint or operating system."""
     ep = endpoint or get_default_ipc_endpoint(config_dir)
 
-    if ep.startswith(r"\\.\pipe\\"):
+    if ep.startswith(r"\\.\pipe"):
         if is_windows():
             return NamedPipeServerTransport(ep)
         # Fallback for non-windows mock/tests
@@ -462,8 +462,7 @@ def create_server_transport(endpoint: Optional[str] = None, config_dir: Optional
         p = int(parts[1]) if len(parts) > 1 else 0
         return TCPServerTransport(host=h, port=p)
 
-    # Windows with unix socket fallback
-    if is_windows() and not hasattr(socket, "AF_UNIX"):
+    if is_windows():
         return NamedPipeServerTransport()
 
     return UnixSocketServerTransport(ep)
@@ -473,7 +472,7 @@ def create_client_transport(endpoint: Optional[str] = None, config_dir: Optional
     """Create optimal client transport based on endpoint or operating system."""
     ep = endpoint or get_default_ipc_endpoint(config_dir)
 
-    if ep.startswith(r"\\.\pipe\\"):
+    if ep.startswith(r"\\.\pipe"):
         if is_windows():
             return NamedPipeClientTransport(ep)
         return TCPClientTransport()
@@ -484,7 +483,7 @@ def create_client_transport(endpoint: Optional[str] = None, config_dir: Optional
         p = int(parts[1]) if len(parts) > 1 else 0
         return TCPClientTransport(host=h, port=p)
 
-    if is_windows() and not hasattr(socket, "AF_UNIX"):
+    if is_windows():
         return NamedPipeClientTransport()
 
     return UnixSocketClientTransport(ep)

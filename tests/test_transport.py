@@ -116,6 +116,18 @@ class TestIPCTransport(unittest.TestCase):
         ct_tcp = create_client_transport("tcp://127.0.0.1:9876")
         self.assertIsInstance(ct_tcp, TCPClientTransport)
 
+        from unittest.mock import patch
+        with patch("idm_ipc.transport.is_windows", return_value=True):
+            st_pipe = create_server_transport(r"\\.\pipe\idm_ipc_socket")
+            self.assertIsInstance(st_pipe, NamedPipeServerTransport)
+            ct_pipe = create_client_transport(r"\\.\pipe\idm_ipc_socket")
+            self.assertIsInstance(ct_pipe, NamedPipeClientTransport)
+
+            st_pipe_def = create_server_transport()
+            self.assertIsInstance(st_pipe_def, NamedPipeServerTransport)
+            ct_pipe_def = create_client_transport()
+            self.assertIsInstance(ct_pipe_def, NamedPipeClientTransport)
+
     def test_named_pipe_not_running(self):
         ct_pipe = NamedPipeClientTransport(r"\\.\pipe\nonexistent_pipe_12345")
         self.assertFalse(ct_pipe.is_server_running())

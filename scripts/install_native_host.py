@@ -57,6 +57,16 @@ def create_wrapper_script(repo_root: str) -> str:
     py_exec = sys.executable or ("python.exe" if sys.platform == "win32" else "/usr/bin/python3")
 
     if sys.platform == "win32":
+        # If running from a compiled PyInstaller distribution, use the native .exe directly
+        candidates = [
+            os.path.join(repo_root, "dist", "idm-linux", "idm-native-host.exe"),
+            os.path.join(repo_root, "idm-native-host.exe"),
+            os.path.join(os.path.dirname(py_exec), "idm-native-host.exe"),
+        ]
+        for c in candidates:
+            if os.path.exists(c):
+                return c
+
         wrapper_path = os.path.join(repo_root, "scripts", "idm-native-host-wrapper.bat")
         script_content = f"""@echo off
 setlocal

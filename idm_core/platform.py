@@ -103,9 +103,7 @@ def get_download_dir() -> str:
 
         user_profile = os.environ.get("USERPROFILE")
         if user_profile:
-            candidate = os.path.join(user_profile, "Downloads")
-            if os.path.exists(candidate):
-                return candidate
+            return os.path.join(user_profile, "Downloads")
 
         return os.path.expanduser("~/Downloads")
 
