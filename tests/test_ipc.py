@@ -21,17 +21,20 @@ class TestIPC(unittest.TestCase):
             download_dir=os.path.join(self.test_dir, "Downloads"),
         )
         self.engine = DownloadEngine(self.config)
-        self.server = IPCServer(self.engine, self.sock_path)
+        self.server = IPCServer(self.engine, self.config.socket_path)
         self.server.start()
-        time.sleep(0.1)
+        for _ in range(30):
+            if IPCClient(self.config.socket_path).is_server_running():
+                break
+            time.sleep(0.05)
 
     def tearDown(self):
         self.server.stop()
         self.engine.shutdown()
-        shutil.rmtree(self.test_dir)
+        shutil.rmtree(self.test_dir, ignore_errors=True)
 
     def test_ping_and_add_download_via_ipc(self):
-        client = IPCClient(self.sock_path)
+        client = IPCClient(self.config.socket_path)
         self.assertTrue(client.is_server_running())
 
         # Test Ping

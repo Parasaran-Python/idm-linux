@@ -74,12 +74,21 @@ class TestPlatformAbstraction(unittest.TestCase):
         self.assertTrue(os.path.exists(py))
 
     def test_system_power_action(self):
-        with patch("subprocess.run", return_value=MagicMock(returncode=0)) as mock_run:
+        with patch("idm_core.platform.is_windows", return_value=False), \
+             patch("idm_core.platform.is_macos", return_value=False), \
+             patch("subprocess.run", return_value=MagicMock(returncode=0)) as mock_run:
             self.assertTrue(system_power_action("shutdown"))
             mock_run.assert_called()
 
-        with patch("subprocess.run", return_value=MagicMock(returncode=0)) as mock_run:
+        with patch("idm_core.platform.is_windows", return_value=False), \
+             patch("idm_core.platform.is_macos", return_value=False), \
+             patch("subprocess.run", return_value=MagicMock(returncode=0)) as mock_run:
             self.assertTrue(system_power_action("sleep"))
+            mock_run.assert_called()
+
+        with patch("idm_core.platform.is_windows", return_value=True), \
+             patch("subprocess.run", return_value=MagicMock(returncode=0)) as mock_run:
+            self.assertTrue(system_power_action("shutdown"))
             mock_run.assert_called()
 
         self.assertFalse(system_power_action("unknown_action"))

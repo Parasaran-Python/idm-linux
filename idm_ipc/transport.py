@@ -8,6 +8,7 @@ Provides abstract transport interfaces and implementations for:
 
 import abc
 import os
+import re
 import socket
 import sys
 import threading
@@ -263,6 +264,78 @@ class TCPClientTransport(BaseClientTransport):
 # 3. Windows Named Pipe Transport (via ctypes Win32 API)
 # =====================================================================
 
+_win32_initialized = False
+
+
+def _setup_win32_named_pipes():
+    global _win32_initialized
+    if _win32_initialized or not is_windows():
+        return
+    try:
+        import ctypes
+        from ctypes import wintypes
+        k32 = ctypes.windll.kernel32
+
+        k32.CreateNamedPipeW.argtypes = [
+            wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD, wintypes.DWORD,
+            wintypes.DWORD, wintypes.DWORD, wintypes.DWORD, wintypes.LPVOID
+        ]
+        k32.CreateNamedPipeW.restype = wintypes.HANDLE
+
+        k32.ConnectNamedPipe.argtypes = [wintypes.HANDLE, wintypes.LPVOID]
+        k32.ConnectNamedPipe.restype = wintypes.BOOL
+
+        k32.WaitNamedPipeW.argtypes = [wintypes.LPCWSTR, wintypes.DWORD]
+        k32.WaitNamedPipeW.restype = wintypes.BOOL
+
+        k32.CreateFileW.argtypes = [
+            wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD, wintypes.LPVOID,
+            wintypes.DWORD, wintypes.DWORD, wintypes.HANDLE
+        ]
+        k32.CreateFileW.restype = wintypes.HANDLE
+
+        k32.ReadFile.argtypes = [
+            wintypes.HANDLE, wintypes.LPVOID, wintypes.DWORD,
+            ctypes.POINTER(wintypes.DWORD), wintypes.LPVOID
+        ]
+        k32.ReadFile.restype = wintypes.BOOL
+
+        k32.WriteFile.argtypes = [
+            wintypes.HANDLE, wintypes.LPCVOID, wintypes.DWORD,
+            ctypes.POINTER(wintypes.DWORD), wintypes.LPVOID
+        ]
+        k32.WriteFile.restype = wintypes.BOOL
+
+        k32.CloseHandle.argtypes = [wintypes.HANDLE]
+        k32.CloseHandle.restype = wintypes.BOOL
+
+        k32.DisconnectNamedPipe.argtypes = [wintypes.HANDLE]
+        k32.DisconnectNamedPipe.restype = wintypes.BOOL
+
+        _win32_initialized = True
+    except Exception:
+        pass
+
+
+def _is_invalid_handle(handle) -> bool:
+    if handle is None or handle == 0:
+        return True
+    try:
+        import ctypes
+        val = ctypes.c_void_p(handle).value
+        return val is None or val in (-1, 0xFFFFFFFFFFFFFFFF, 0xFFFFFFFF)
+    except Exception:
+        return handle in (-1, 0)
+
+
+def get_windows_pipe_name(endpoint_or_path: str) -> str:
+    if endpoint_or_path.startswith(r"\\.\pipe"):
+        return endpoint_or_path
+    base = os.path.basename(endpoint_or_path) or "idm_ipc_socket"
+    safe = re.sub(r'[^a-zA-Z0-9_-]', '_', base)
+    return rf"\\.\pipe\idm_{safe}"
+
+
 class NamedPipeConnection(BaseConnection):
     def __init__(self, handle, is_server: bool = False):
         self.handle = handle
@@ -272,7 +345,7 @@ class NamedPipeConnection(BaseConnection):
         self._lock = threading.Lock()
 
     def recv(self, bufsize: int) -> bytes:
-        if self._closed or not self.handle:
+        if self._closed or _is_invalid_handle(self.handle):
             return b""
         try:
             import ctypes
@@ -295,7 +368,7 @@ class NamedPipeConnection(BaseConnection):
             return b""
 
     def sendall(self, data: bytes):
-        if self._closed or not self.handle:
+        if self._closed or _is_invalid_handle(self.handle):
             raise ConnectionResetError("Named pipe is closed")
         try:
             import ctypes
@@ -325,7 +398,7 @@ class NamedPipeConnection(BaseConnection):
             if self._closed:
                 return
             self._closed = True
-            if self.handle:
+            if not _is_invalid_handle(self.handle):
                 try:
                     import ctypes
                     if self.is_server:
@@ -355,6 +428,7 @@ class NamedPipeServerTransport(BaseServerTransport):
         try:
             import ctypes
             from ctypes import wintypes
+            _setup_win32_named_pipes()
 
             # Win32 Named Pipe Constants
             PIPE_ACCESS_DUPLEX = 0x00000003
@@ -363,7 +437,6 @@ class NamedPipeServerTransport(BaseServerTransport):
             PIPE_WAIT = 0x00000000
             PIPE_UNLIMITED_INSTANCES = 255
             BUF_SIZE = 65536
-            INVALID_HANDLE_VALUE = -1
 
             h_pipe = ctypes.windll.kernel32.CreateNamedPipeW(
                 self.pipe_name,
@@ -376,7 +449,7 @@ class NamedPipeServerTransport(BaseServerTransport):
                 None
             )
 
-            if h_pipe == INVALID_HANDLE_VALUE:
+            if _is_invalid_handle(h_pipe):
                 return None
 
             # ConnectNamedPipe returns TRUE or FALSE with ERROR_PIPE_CONNECTED
@@ -404,15 +477,14 @@ class NamedPipeClientTransport(BaseClientTransport):
         try:
             import ctypes
             from ctypes import wintypes
+            _setup_win32_named_pipes()
 
             GENERIC_READ = 0x80000000
             GENERIC_WRITE = 0x40000000
             OPEN_EXISTING = 3
-            INVALID_HANDLE_VALUE = -1
 
             # Wait for pipe if busy
-            start_t = time.time()
-            timeout_ms = int(timeout * 1000)
+            timeout_ms = max(50, int(timeout * 1000))
             ctypes.windll.kernel32.WaitNamedPipeW(self.pipe_name, timeout_ms)
 
             h_pipe = ctypes.windll.kernel32.CreateFileW(
@@ -425,7 +497,7 @@ class NamedPipeClientTransport(BaseClientTransport):
                 None
             )
 
-            if h_pipe == INVALID_HANDLE_VALUE:
+            if _is_invalid_handle(h_pipe):
                 raise ConnectionRefusedError(f"Could not open named pipe: {self.pipe_name}")
 
             return NamedPipeConnection(h_pipe, is_server=False)
@@ -435,9 +507,16 @@ class NamedPipeClientTransport(BaseClientTransport):
     def is_server_running(self) -> bool:
         try:
             import ctypes
-            # Check if pipe exists by waiting with 100ms timeout
+            _setup_win32_named_pipes()
             res = ctypes.windll.kernel32.WaitNamedPipeW(self.pipe_name, 100)
-            return bool(res)
+            if res:
+                return True
+            err = ctypes.windll.kernel32.GetLastError()
+            ERROR_PIPE_BUSY = 231
+            ERROR_ALREADY_EXISTS = 183
+            if err in (ERROR_PIPE_BUSY, ERROR_ALREADY_EXISTS):
+                return True
+            return False
         except Exception:
             return False
 
@@ -463,7 +542,7 @@ def create_server_transport(endpoint: Optional[str] = None, config_dir: Optional
         return TCPServerTransport(host=h, port=p)
 
     if is_windows():
-        return NamedPipeServerTransport()
+        return NamedPipeServerTransport(get_windows_pipe_name(ep))
 
     return UnixSocketServerTransport(ep)
 
@@ -484,6 +563,6 @@ def create_client_transport(endpoint: Optional[str] = None, config_dir: Optional
         return TCPClientTransport(host=h, port=p)
 
     if is_windows():
-        return NamedPipeClientTransport()
+        return NamedPipeClientTransport(get_windows_pipe_name(ep))
 
     return UnixSocketClientTransport(ep)

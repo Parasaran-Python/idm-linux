@@ -1,5 +1,6 @@
 import os
 import shutil
+import socket
 import tempfile
 import threading
 import time
@@ -28,6 +29,7 @@ class TestIPCTransport(unittest.TestCase):
     def tearDown(self):
         shutil.rmtree(self.test_dir, ignore_errors=True)
 
+    @unittest.skipUnless(hasattr(socket, "AF_UNIX"), "Requires AF_UNIX socket support")
     def test_unix_socket_transport(self):
         sock_path = os.path.join(self.test_dir, "test_unix.sock")
         server_transport = UnixSocketServerTransport(sock_path)
@@ -106,10 +108,11 @@ class TestIPCTransport(unittest.TestCase):
         server_transport.stop()
 
     def test_transport_factories(self):
-        st_unix = create_server_transport("/tmp/test_factory.sock")
-        self.assertIsInstance(st_unix, UnixSocketServerTransport)
-        ct_unix = create_client_transport("/tmp/test_factory.sock")
-        self.assertIsInstance(ct_unix, UnixSocketClientTransport)
+        if hasattr(socket, "AF_UNIX"):
+            st_unix = create_server_transport("/tmp/test_factory.sock")
+            self.assertIsInstance(st_unix, UnixSocketServerTransport)
+            ct_unix = create_client_transport("/tmp/test_factory.sock")
+            self.assertIsInstance(ct_unix, UnixSocketClientTransport)
 
         st_tcp = create_server_transport("tcp://127.0.0.1:9876")
         self.assertIsInstance(st_tcp, TCPServerTransport)
