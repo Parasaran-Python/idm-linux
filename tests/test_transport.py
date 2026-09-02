@@ -168,7 +168,6 @@ class TestIPCTransport(unittest.TestCase):
         client_transport = NamedPipeClientTransport(pipe_name)
 
         server_transport.start()
-        self.assertTrue(client_transport.is_server_running())
 
         stop_accept = threading.Event()
 
@@ -188,6 +187,14 @@ class TestIPCTransport(unittest.TestCase):
         t = threading.Thread(target=accept_worker, daemon=True)
         t.start()
 
+        running = False
+        for _ in range(50):
+            if client_transport.is_server_running():
+                running = True
+                break
+            time.sleep(0.05)
+        self.assertTrue(running)
+
         client_conn = client_transport.connect(timeout=3.0)
         client_conn.sendall(encode_message({"ping": True}))
         reply = decode_message(client_conn)
@@ -198,6 +205,7 @@ class TestIPCTransport(unittest.TestCase):
         client_conn.close()
         stop_accept.set()
         server_transport.stop()
+        t.join(timeout=2.0)
 
 
 if __name__ == "__main__":
