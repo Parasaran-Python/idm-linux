@@ -72,8 +72,38 @@ def download_ffmpeg(bin_dir: str):
                 pass
 
 
+ARIA2_ZIP_URL = "https://github.com/aria2/aria2/releases/download/release-1.37.0/aria2-1.37.0-win-64bit-build1.zip"
+
+
+def download_aria2(bin_dir: str):
+    dest_aria2 = os.path.join(bin_dir, "aria2c.exe")
+    if os.path.exists(dest_aria2) and os.path.getsize(dest_aria2) > 1000000:
+        print(f"[*] aria2c.exe already exists at {dest_aria2}. Skipping.")
+        return
+
+    temp_zip = os.path.join(bin_dir, "aria2_temp.zip")
+    try:
+        download_file(ARIA2_ZIP_URL, temp_zip)
+        print("[*] Extracting aria2c.exe from archive...")
+        with zipfile.ZipFile(temp_zip, "r") as zf:
+            for item in zf.namelist():
+                if item.endswith("aria2c.exe"):
+                    with zf.open(item) as src, open(dest_aria2, "wb") as dst:
+                        shutil.copyfileobj(src, dst)
+                    print(f"[OK] Extracted {dest_aria2}")
+                    break
+    except Exception as e:
+        print(f"[WARN] Failed to download aria2c.exe: {e}")
+    finally:
+        if os.path.exists(temp_zip):
+            try:
+                os.remove(temp_zip)
+            except Exception:
+                pass
+
+
 def main():
-    parser = argparse.ArgumentParser(description="Download official Windows binaries (yt-dlp, ffmpeg) for bundling.")
+    parser = argparse.ArgumentParser(description="Download official Windows binaries (yt-dlp, ffmpeg, aria2) for bundling.")
     parser.add_argument(
         "--output-dir",
         "-o",
@@ -82,14 +112,19 @@ def main():
     )
     parser.add_argument("--ytdlp-only", action="store_true", help="Download only yt-dlp.exe")
     parser.add_argument("--ffmpeg-only", action="store_true", help="Download only ffmpeg.exe")
+    parser.add_argument("--aria2-only", action="store_true", help="Download only aria2c.exe")
 
     args = parser.parse_args()
     os.makedirs(args.output_dir, exist_ok=True)
 
-    if not args.ffmpeg_only:
+    download_all = not (args.ytdlp_only or args.ffmpeg_only or args.aria2_only)
+
+    if download_all or args.ytdlp_only:
         download_ytdlp(args.output_dir)
-    if not args.ytdlp_only:
+    if download_all or args.ffmpeg_only:
         download_ffmpeg(args.output_dir)
+    if download_all or args.aria2_only:
+        download_aria2(args.output_dir)
 
     print(f"\n[DONE] Bundling directory ready: {args.output_dir}")
 

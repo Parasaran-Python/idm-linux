@@ -9,6 +9,7 @@ import base64
 import hashlib
 import json
 import os
+import shutil
 import stat
 import sys
 from typing import List, Optional
@@ -59,19 +60,42 @@ def create_wrapper_script(repo_root: str) -> str:
         py_exec = py_exec[:-10] + "python.exe"
 
     if sys.platform == "win32":
-        # If running from a compiled PyInstaller distribution, use the native .exe directly
+        # 1. Check for installed or bundled idm-native-host.exe
+        app_dir = os.path.dirname(os.path.abspath(py_exec))
         candidates = [
+            os.path.join(app_dir, "idm-native-host.exe"),
+            os.path.join(app_dir, "Scripts", "idm-native-host.exe"),
             os.path.join(repo_root, "dist", "idm-linux", "idm-native-host.exe"),
             os.path.join(repo_root, "idm-native-host.exe"),
-            os.path.join(os.path.dirname(py_exec), "idm-native-host.exe"),
         ]
         for c in candidates:
             if os.path.exists(c):
-                return c
+                return os.path.abspath(c)
 
-        wrapper_path = os.path.join(repo_root, "scripts", "idm-native-host-wrapper.bat")
+        which_exe = shutil.which("idm-native-host.exe")
+        if which_exe:
+            return os.path.abspath(which_exe)
+
+        # 2. Write permanent wrapper batch script to user AppData
+        base_dir = os.environ.get("LOCALAPPDATA") or os.environ.get("APPDATA") or os.path.expanduser("~")
+        native_dir = os.path.join(base_dir, "idm-linux", "native-messaging-hosts")
+        os.makedirs(native_dir, exist_ok=True)
+        wrapper_path = os.path.join(native_dir, "idm-native-host-wrapper.bat")
         script_content = f"""@echo off
 setlocal
+where idm-native-host.exe >nul 2>nul
+if %ERRORLEVEL% equ 0 (
+    idm-native-host.exe %*
+    exit /b %ERRORLEVEL%
+)
+if exist "%~dp0idm-native-host.exe" (
+    "%~dp0idm-native-host.exe" %*
+    exit /b %ERRORLEVEL%
+)
+if exist "%~dp0..\\idm-native-host.exe" (
+    "%~dp0..\\idm-native-host.exe" %*
+    exit /b %ERRORLEVEL%
+)
 set "PYTHONPATH={repo_root};%PYTHONPATH%"
 "{py_exec}" -m idm_native_host.host %*
 """
@@ -138,7 +162,10 @@ def install_manifests(custom_chrome_ids: Optional[List[str]] = None):
         try:
             import winreg
 
-            manifests_dir = os.path.join(repo_root, "scripts")
+            base_dir = os.environ.get("LOCALAPPDATA") or os.environ.get("APPDATA") or os.path.expanduser("~")
+            manifests_dir = os.path.join(base_dir, "idm-linux", "native-messaging-hosts")
+            os.makedirs(manifests_dir, exist_ok=True)
+
             chrome_manifest_file = os.path.join(manifests_dir, f"{HOST_NAME}.json")
             firefox_manifest_file = os.path.join(manifests_dir, f"{HOST_NAME}.firefox.json")
 

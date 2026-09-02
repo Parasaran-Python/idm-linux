@@ -425,6 +425,7 @@ class NamedPipeServerTransport(BaseServerTransport):
         if not self._running:
             return None
 
+        h_pipe = None
         try:
             import ctypes
             from ctypes import wintypes
@@ -461,12 +462,25 @@ class NamedPipeServerTransport(BaseServerTransport):
             if not connected:
                 err = ctypes.windll.kernel32.GetLastError()
                 ERROR_PIPE_CONNECTED = 535
-                if err != ERROR_PIPE_CONNECTED:
+                ERROR_NO_DATA = 232  # Client closed pipe before data was sent
+                if err == ERROR_NO_DATA:
+                    try:
+                        ctypes.windll.kernel32.DisconnectNamedPipe(h_pipe)
+                    except Exception:
+                        pass
+                    ctypes.windll.kernel32.CloseHandle(h_pipe)
+                    return None
+                elif err != ERROR_PIPE_CONNECTED:
                     ctypes.windll.kernel32.CloseHandle(h_pipe)
                     return None
 
             return NamedPipeConnection(h_pipe, is_server=True)
         except Exception:
+            if h_pipe and not _is_invalid_handle(h_pipe):
+                try:
+                    ctypes.windll.kernel32.CloseHandle(h_pipe)
+                except Exception:
+                    pass
             return None
 
     def stop(self):

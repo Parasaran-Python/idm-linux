@@ -16,7 +16,7 @@ from idm_core.platform import (
 
 @dataclass
 class Config:
-    config_dir: str = field(default_factory=get_config_dir)
+    config_dir: str = field(default_factory=lambda: get_config_dir())
     database_path: Optional[str] = None
     socket_path: Optional[str] = None
     temp_dir: Optional[str] = None

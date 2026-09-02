@@ -1,6 +1,7 @@
 import os
 import shutil
 import socket
+import sys
 import tempfile
 import threading
 import time
@@ -159,6 +160,44 @@ class TestIPCTransport(unittest.TestCase):
 
         server.stop()
         engine.shutdown()
+
+    @unittest.skipUnless(sys.platform == "win32", "Requires Windows Named Pipe support")
+    def test_named_pipe_server_and_client_roundtrip(self):
+        pipe_name = rf"\\.\pipe\idm_test_roundtrip_{os.getpid()}"
+        server_transport = NamedPipeServerTransport(pipe_name)
+        client_transport = NamedPipeClientTransport(pipe_name)
+
+        server_transport.start()
+        self.assertTrue(client_transport.is_server_running())
+
+        stop_accept = threading.Event()
+
+        def accept_worker():
+            while not stop_accept.is_set():
+                try:
+                    conn = server_transport.accept()
+                    if not conn:
+                        break
+                    msg = decode_message(conn)
+                    if msg and msg.get("ping"):
+                        conn.sendall(encode_message({"pong": True}))
+                    conn.close()
+                except Exception:
+                    break
+
+        t = threading.Thread(target=accept_worker, daemon=True)
+        t.start()
+
+        client_conn = client_transport.connect(timeout=3.0)
+        client_conn.sendall(encode_message({"ping": True}))
+        reply = decode_message(client_conn)
+
+        self.assertIsNotNone(reply)
+        self.assertTrue(reply.get("pong"))
+
+        client_conn.close()
+        stop_accept.set()
+        server_transport.stop()
 
 
 if __name__ == "__main__":

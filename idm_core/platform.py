@@ -13,7 +13,7 @@ from typing import Optional
 
 def is_windows() -> bool:
     """Return True if running on Microsoft Windows."""
-    return sys.platform.startswith("win32") or sys.platform.startswith("cygwin")
+    return sys.platform == "win32" or sys.platform.startswith("cygwin")
 
 
 def is_linux() -> bool:
@@ -281,8 +281,14 @@ def system_power_action(action: str) -> bool:
                 return bool(ret)
             except Exception:
                 res = subprocess.run(
-                    ["rundll32.exe", "powrprof.dll,SetSuspendState", "0,1,0"],
-                    check=False
+                    [
+                        "powershell",
+                        "-NoProfile",
+                        "-NonInteractive",
+                        "-Command",
+                        "Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.Application]::SetSuspendState([System.Windows.Forms.PowerState]::Suspend, $false, $false)",
+                    ],
+                    check=False,
                 )
                 return res.returncode == 0
         if is_macos():
@@ -365,9 +371,19 @@ def move_to_trash(filepath: str) -> bool:
     # 4. Linux FreeDesktop fallback folder
     if is_linux():
         try:
-            trash_dir = os.path.expanduser("~/.local/share/Trash/files")
-            os.makedirs(trash_dir, exist_ok=True)
-            dest = os.path.join(trash_dir, os.path.basename(abs_path))
+            import datetime
+            import urllib.parse
+            trash_files = os.path.expanduser("~/.local/share/Trash/files")
+            trash_info = os.path.expanduser("~/.local/share/Trash/info")
+            os.makedirs(trash_files, exist_ok=True)
+            os.makedirs(trash_info, exist_ok=True)
+
+            fname = os.path.basename(abs_path)
+            dest = os.path.join(trash_files, fname)
+            info_file = os.path.join(trash_info, f"{fname}.trashinfo")
+            del_date = datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
+            with open(info_file, "w", encoding="utf-8") as f:
+                f.write(f"[Trash Info]\nPath={urllib.parse.quote(abs_path)}\nDeletionDate={del_date}\n")
             shutil.move(abs_path, dest)
             return True
         except Exception:
@@ -403,8 +419,8 @@ def show_desktop_notification(title: str, message: str, icon_path: Optional[str]
     - macOS: Uses AppleScript display notification
     Returns True if successfully dispatched, False if fallback to Qt tray is required.
     """
-    safe_title = (title or "IDM Linux").replace('"', '\\"')
-    safe_msg = (message or "").replace('"', '\\"')
+    safe_title = (title or "IDM Linux").replace("`", "``").replace("'", "''").replace('"', '\\"')
+    safe_msg = (message or "").replace("`", "``").replace("'", "''").replace('"', '\\"')
 
     # 1. Windows: Try windows-toasts library
     if is_windows():
