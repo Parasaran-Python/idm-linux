@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "idm-linux"
-version = "1.0.6"
+version = "1.0.7"
 description = "Internet Download Manager (IDM) clone for Linux with dynamic multi-segment downloading, browser interception, video sniffing, and PyQt6 GUI."
 readme = "README.md"
 license = { text = "GPL-3.0-or-later" }
