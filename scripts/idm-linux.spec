@@ -23,7 +23,9 @@ bin_dir = os.path.join(REPO_ROOT, "bin")
 if os.path.exists(bin_dir) and os.listdir(bin_dir):
     datas.append((bin_dir, "bin"))
 
-icon_path = os.path.join(REPO_ROOT, "extension", "icons", "icon128.png")
+icon_path = os.path.join(REPO_ROOT, "extension", "icons", "icon.ico")
+if not os.path.exists(icon_path):
+    icon_path = os.path.join(REPO_ROOT, "extension", "icons", "icon128.png")
 if not os.path.exists(icon_path):
     icon_path = None
 
