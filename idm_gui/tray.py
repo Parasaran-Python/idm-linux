@@ -43,7 +43,7 @@ class IDMTrayIcon(QSystemTrayIcon):
         self.main_window = main_window
 
         self.setIcon(QIcon(create_tray_icon_pixmap()))
-        self.setToolTip("IDM Linux - Internet Download Manager")
+        self.setToolTip("PV-IDM - Internet Download Manager")
 
         self._setup_menu()
         self.activated.connect(self._on_activated)

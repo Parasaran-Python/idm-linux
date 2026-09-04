@@ -5,31 +5,31 @@ REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DIST_DIR="${REPO_DIR}/dist"
 APPDIR="${DIST_DIR}/AppDir"
 
-echo "[*] Building IDM Linux AppDir..."
+echo "[*] Building PV-IDM AppDir..."
 rm -rf "${APPDIR}"
-mkdir -p "${APPDIR}/usr/bin" "${APPDIR}/usr/share/applications" "${APPDIR}/usr/share/icons/hicolor/128x128/apps" "${APPDIR}/usr/lib/idm-linux"
+mkdir -p "${APPDIR}/usr/bin" "${APPDIR}/usr/share/applications" "${APPDIR}/usr/share/icons/hicolor/128x128/apps" "${APPDIR}/usr/lib/pv-idm"
 
 # Copy python packages
-cp -r "${REPO_DIR}/idm_core" "${APPDIR}/usr/lib/idm-linux/"
-cp -r "${REPO_DIR}/idm_gui" "${APPDIR}/usr/lib/idm-linux/"
-cp -r "${REPO_DIR}/idm_ipc" "${APPDIR}/usr/lib/idm-linux/"
-cp -r "${REPO_DIR}/idm_cli" "${APPDIR}/usr/lib/idm-linux/"
-cp -r "${REPO_DIR}/idm_native_host" "${APPDIR}/usr/lib/idm-linux/"
-cp -r "${REPO_DIR}/extension" "${APPDIR}/usr/lib/idm-linux/"
-cp -r "${REPO_DIR}/scripts" "${APPDIR}/usr/lib/idm-linux/"
+cp -r "${REPO_DIR}/idm_core" "${APPDIR}/usr/lib/pv-idm/"
+cp -r "${REPO_DIR}/idm_gui" "${APPDIR}/usr/lib/pv-idm/"
+cp -r "${REPO_DIR}/idm_ipc" "${APPDIR}/usr/lib/pv-idm/"
+cp -r "${REPO_DIR}/idm_cli" "${APPDIR}/usr/lib/pv-idm/"
+cp -r "${REPO_DIR}/idm_native_host" "${APPDIR}/usr/lib/pv-idm/"
+cp -r "${REPO_DIR}/extension" "${APPDIR}/usr/lib/pv-idm/"
+cp -r "${REPO_DIR}/scripts" "${APPDIR}/usr/lib/pv-idm/"
 
 # Copy desktop and icon
-cp "${REPO_DIR}/scripts/idm-linux.desktop" "${APPDIR}/idm-linux.desktop"
-cp "${REPO_DIR}/scripts/idm-linux.desktop" "${APPDIR}/usr/share/applications/idm-linux.desktop"
-cp "${REPO_DIR}/extension/icons/icon128.png" "${APPDIR}/idm-linux.png"
+cp "${REPO_DIR}/scripts/pv-idm.desktop" "${APPDIR}/pv-idm.desktop"
+cp "${REPO_DIR}/scripts/pv-idm.desktop" "${APPDIR}/usr/share/applications/pv-idm.desktop"
+cp "${REPO_DIR}/extension/icons/icon128.png" "${APPDIR}/pv-idm.png"
 cp "${REPO_DIR}/extension/icons/icon128.png" "${APPDIR}/.DirIcon"
-cp "${REPO_DIR}/extension/icons/icon128.png" "${APPDIR}/usr/share/icons/hicolor/128x128/apps/idm-linux.png"
+cp "${REPO_DIR}/extension/icons/icon128.png" "${APPDIR}/usr/share/icons/hicolor/128x128/apps/pv-idm.png"
 
 # Create AppRun
 cat << 'EOF' > "${APPDIR}/AppRun"
 #!/bin/bash
 APPDIR="$(dirname "$(readlink -f "$0")")"
-export PYTHONPATH="${APPDIR}/usr/lib/idm-linux:${PYTHONPATH}"
+export PYTHONPATH="${APPDIR}/usr/lib/pv-idm:${PYTHONPATH}"
 export PATH="${APPDIR}/usr/bin:${PATH}"
 
 if [ "$1" = "cli" ] || [ "$1" = "add" ] || [ "$1" = "list" ] || [ "$1" = "pause" ] || [ "$1" = "resume" ]; then

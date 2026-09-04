@@ -93,7 +93,7 @@ class TestExtensionManifests(unittest.TestCase):
         self.assertIn("scripts", data["background"])
         self.assertIn("browser_specific_settings", data)
         self.assertIn("gecko", data["browser_specific_settings"])
-        self.assertEqual(data["browser_specific_settings"]["gecko"].get("id"), "idm-linux@idm-linux.local")
+        self.assertEqual(data["browser_specific_settings"]["gecko"].get("id"), "pv-idm@pv-idm.local")
 
         # Verify tabs permission for parity
         permissions = data.get("permissions", [])
@@ -111,6 +111,11 @@ class TestExtensionManifests(unittest.TestCase):
         pkg_script = os.path.join(self.repo_root, "scripts", "package_extensions.py")
         res = subprocess.run([sys.executable, pkg_script], cwd=self.repo_root, capture_output=True, text=True)
         self.assertEqual(res.returncode, 0, f"Packaging failed: {res.stderr}")
+
+        pv_chrome_zip = os.path.join(self.repo_root, "dist", "pv-idm-extension-chrome-mv3.zip")
+        pv_firefox_zip = os.path.join(self.repo_root, "dist", "pv-idm-extension-firefox.zip")
+        self.assertTrue(os.path.exists(pv_chrome_zip), "PV-IDM Chrome zip must be built")
+        self.assertTrue(os.path.exists(pv_firefox_zip), "PV-IDM Firefox zip must be built")
 
         chrome_zip = os.path.join(self.repo_root, "dist", "idm-linux-extension-chrome-mv3.zip")
         firefox_zip = os.path.join(self.repo_root, "dist", "idm-linux-extension-firefox.zip")

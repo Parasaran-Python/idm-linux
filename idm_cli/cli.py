@@ -13,8 +13,8 @@ from idm_ipc.socket_client import IPCClient
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="idm",
-        description="IDM Linux - Internet Download Manager Command Line Tool"
+        prog="pv-idm",
+        description="PV-IDM - Internet Download Manager Command Line Tool"
     )
     subparsers = parser.add_subparsers(dest="command", help="Command to execute")
 
@@ -87,10 +87,10 @@ def run_cli_command(args: argparse.Namespace, client: Optional[IPCClient] = None
 
     if not args.command or args.command == "status":
         if not ipc.is_server_running():
-            print("IDM Linux Status: Offline (Daemon is not currently running)")
+            print("PV-IDM Status: Offline (Daemon is not currently running)")
             return 1
         res = ipc.ping()
-        print(f"IDM Linux Status: Online ({res.get('app', 'IDM Linux')} v{res.get('version', '1.0.0')})")
+        print(f"PV-IDM Status: Online ({res.get('app', 'PV-IDM')} v{res.get('version', '1.0.0')})")
         return 0
 
     if args.command == "add":

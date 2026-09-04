@@ -1,25 +1,25 @@
 [Desktop Entry]
-Name=IDM Linux
+Name=PV-IDM
 GenericName=Internet Download Manager
 Comment=High-performance segmented download manager with browser integration
-Exec=idm-gui %U
-Icon=idm-linux
+Exec=pv-idm-gui %U
+Icon=pv-idm
 Terminal=false
 Type=Application
 Categories=Network;FileTransfer;P2P;
 MimeType=x-scheme-handler/idm;x-scheme-handler/http;x-scheme-handler/https;
 StartupNotify=true
-StartupWMClass=idm-linux
+StartupWMClass=pv-idm
 Actions=AddUrl;StartQueue;StopAll;
 
 [Desktop Action AddUrl]
-Name=Add URL to IDM
-Exec=idm-gui
+Name=Add URL to PV-IDM
+Exec=pv-idm-gui
 
 [Desktop Action StartQueue]
 Name=Start Download Queue
-Exec=idm queue start
+Exec=pv-idm queue start
 
 [Desktop Action StopAll]
 Name=Stop All Downloads
-Exec=idm queue stop
+Exec=pv-idm queue stop

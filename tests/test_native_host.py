@@ -26,6 +26,7 @@ class TestNativeHost(unittest.TestCase):
     def test_handle_browser_message_ping(self):
         res = handle_browser_message({"action": "ping"}, ipc_client=None)
         self.assertTrue(res.get("pong", False))
+        self.assertEqual(res.get("app"), "PV-IDM")
 
     def test_ensure_idm_running_already_running(self):
         from unittest.mock import MagicMock

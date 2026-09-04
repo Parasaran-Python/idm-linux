@@ -63,10 +63,10 @@ def install_manifests(
     allowed_origins = [f"chrome-extension://{cid}/" for cid in chrome_ids]
 
     if success:
-        print(f"\nSuccessfully installed IDM Native Messaging Host to {count} browser locations.")
+        print(f"\nSuccessfully installed PV-IDM Native Messaging Host to {count} browser locations.")
         print(f"Host binary wrapper: {host_path}")
         print(f"Allowed Chrome origins: {allowed_origins}")
-        print("Allowed Firefox extensions: ['idm-linux@idm-linux.local']")
+        print("Allowed Firefox extensions: ['pv-idm@pv-idm.local', 'idm-linux@idm-linux.local']")
     else:
         print("\n[WARNING] Failed to register native messaging host manifests.")
     return success
@@ -79,7 +79,7 @@ is_native_host_registered = is_native_messaging_host_registered
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Install IDM Linux native messaging host manifests.")
+    parser = argparse.ArgumentParser(description="Install PV-IDM native messaging host manifests.")
     parser.add_argument(
         "--chrome-extension-id", "-e",
         action="append",

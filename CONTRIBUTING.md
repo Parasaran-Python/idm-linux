@@ -1,6 +1,6 @@
-# Contributing to IDM Linux
+# Contributing to PV-IDM
 
-Thank you for your interest in contributing to **IDM Linux**! This project is an open-source, feature-complete clone of Internet Download Manager designed natively for Linux desktop environments.
+Thank you for your interest in contributing to **PV-IDM**! This project is an open-source, feature-complete clone of Internet Download Manager designed natively for Linux desktop environments.
 
 ---
 
@@ -13,11 +13,11 @@ Thank you for your interest in contributing to **IDM Linux**! This project is an
 
 ### Clone & Install
 ```bash
-git clone https://github.com/your-username/idm-linux.git
-cd idm-linux
+git clone https://github.com/your-username/pv-idm.git
+cd pv-idm
 
 # Test run without installation
-PYTHONPATH=. python3 -m idm_gui.app
+python3 -m idm_gui.app
 
 # Run test suite
 python3 -m unittest discover -s tests -p "test_*.py"
@@ -28,10 +28,10 @@ python3 -m unittest discover -s tests -p "test_*.py"
 ## 2. Architecture Overview
 
 - **`idm_core/`**: High performance segmented download manager, dynamic chunk splitting allocator, HLS/DASH video stream assembler, SQLite database storage, speed throttler, and scheduler.
-- **`idm_ipc/`**: Unix Domain Socket server and client implementing a 4-byte length-prefixed JSON protocol at `~/.config/idm-linux/idm.sock`.
+- **`idm_ipc/`**: Unix Domain Socket server and client implementing a 4-byte length-prefixed JSON protocol at `~/.config/pv-idm/idm.sock`.
 - **`idm_native_host/`**: Standard stdio-based native messaging bridge connecting browser extensions to the local IDM IPC daemon.
 - **`idm_gui/`**: PyQt6 desktop application featuring the category sidebar, downloads table, dynamic segment colored progress widget, and settings dialogs.
-- **`idm_cli/`**: Command line interface tool (`idm add`, `idm list`, `idm pause`, `idm resume`, `idm queue`).
+- **`idm_cli/`**: Command line interface tool (`pv-idm add`, `pv-idm list`, `pv-idm pause`, `pv-idm resume`, `pv-idm queue`).
 - **`extension/`**: Universal WebExtension (Manifest V3 for Chrome/Chromium/Brave/Edge and Manifest V2/V3 for Firefox) with download interceptor and floating video sniffer panel.
 
 ---

@@ -62,4 +62,4 @@ class Scheduler:
         elif act in ["sleep", "suspend"]:
             system_power_action("sleep")
         elif act == "notify":
-            self.engine.notify("notification", {"title": "IDM Linux", "message": "All downloads in queue finished."})
+            self.engine.notify("notification", {"title": "PV-IDM", "message": "All downloads in queue finished."})

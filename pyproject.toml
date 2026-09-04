@@ -3,13 +3,13 @@ requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "idm-linux"
+name = "pv-idm"
 version = "1.0.7"
 description = "Internet Download Manager (IDM) clone for Linux with dynamic multi-segment downloading, browser interception, video sniffing, and PyQt6 GUI."
 readme = "README.md"
 license = { text = "GPL-3.0-or-later" }
 authors = [
-    { name = "IDM Linux Team" }
+    { name = "PV-IDM Team" }
 ]
 requires-python = ">=3.10"
 dependencies = [
@@ -17,11 +17,21 @@ dependencies = [
 ]
 
 [project.scripts]
+pv-idm = "idm_cli.cli:main"
+pv-idm-gui = "idm_gui.app:main"
+pv-idm-daemon = "idm_ipc.daemon:main"
+pv-idm-native-host = "idm_native_host.host:main"
 idm = "idm_cli.cli:main"
 idm-gui = "idm_gui.app:main"
 idm-daemon = "idm_ipc.daemon:main"
 idm-native-host = "idm_native_host.host:main"
+idm-linux = "idm_cli.cli:main"
+idm-linux-gui = "idm_gui.app:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["idm_core*", "idm_ipc*", "idm_gui*", "idm_cli*", "idm_native_host*"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]

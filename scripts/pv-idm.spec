@@ -73,6 +73,19 @@ exe_gui = EXE(
     console=False,  # Windowed application
     icon=icon_path,
 )
+exe_pv_gui = EXE(
+    pyz_gui,
+    a_gui.scripts,
+    [],
+    exclude_binaries=True,
+    name="pv-idm-gui",
+    debug=False,
+    bootloader_ignore_signals=False,
+    strip=False,
+    upx=True,
+    console=False,
+    icon=icon_path,
+)
 
 # 2. CLI Tool
 a_cli = Analysis(
@@ -101,6 +114,19 @@ exe_cli = EXE(
     strip=False,
     upx=True,
     console=True,  # Console application
+    icon=icon_path,
+)
+exe_pv_cli = EXE(
+    pyz_cli,
+    a_cli.scripts,
+    [],
+    exclude_binaries=True,
+    name="pv-idm",
+    debug=False,
+    bootloader_ignore_signals=False,
+    strip=False,
+    upx=True,
+    console=True,
     icon=icon_path,
 )
 
@@ -133,6 +159,19 @@ exe_host = EXE(
     console=True,  # stdio native messaging host
     icon=icon_path,
 )
+exe_pv_host = EXE(
+    pyz_host,
+    a_host.scripts,
+    [],
+    exclude_binaries=True,
+    name="pv-idm-native-host",
+    debug=False,
+    bootloader_ignore_signals=False,
+    strip=False,
+    upx=True,
+    console=True,
+    icon=icon_path,
+)
 
 # 4. Background Daemon
 a_daemon = Analysis(
@@ -163,21 +202,38 @@ exe_daemon = EXE(
     console=True,
     icon=icon_path,
 )
+exe_pv_daemon = EXE(
+    pyz_daemon,
+    a_daemon.scripts,
+    [],
+    exclude_binaries=True,
+    name="pv-idm-daemon",
+    debug=False,
+    bootloader_ignore_signals=False,
+    strip=False,
+    upx=True,
+    console=True,
+    icon=icon_path,
+)
 
 # Collective distribution bundle
 coll = COLLECT(
+    exe_pv_gui,
     exe_gui,
     a_gui.binaries,
     a_gui.zipfiles,
     a_gui.datas,
+    exe_pv_cli,
     exe_cli,
     a_cli.binaries,
     a_cli.zipfiles,
     a_cli.datas,
+    exe_pv_host,
     exe_host,
     a_host.binaries,
     a_host.zipfiles,
     a_host.datas,
+    exe_pv_daemon,
     exe_daemon,
     a_daemon.binaries,
     a_daemon.zipfiles,
@@ -185,5 +241,5 @@ coll = COLLECT(
     strip=False,
     upx=True,
     upx_exclude=[],
-    name="idm-linux",
+    name="pv-idm",
 )

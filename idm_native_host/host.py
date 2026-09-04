@@ -81,12 +81,21 @@ def ensure_idm_running(client: IPCClient) -> bool:
 
     # If frozen (standalone build, e.g. PyInstaller), look for sibling binaries first
     if is_frozen:
-        candidate_gui_names = ["idm-gui.exe", "idm-gui"] if sys.platform == "win32" else ["idm-gui"]
-        candidate_daemon_names = ["idm-daemon.exe", "idm-daemon"] if sys.platform == "win32" else ["idm-daemon"]
+        candidate_gui_names = (
+            ["pv-idm-gui.exe", "pv-idm-gui", "idm-gui.exe", "idm-gui"]
+            if sys.platform == "win32"
+            else ["pv-idm-gui", "idm-gui"]
+        )
+        candidate_daemon_names = (
+            ["pv-idm-daemon.exe", "pv-idm-daemon", "idm-daemon.exe", "idm-daemon"]
+            if sys.platform == "win32"
+            else ["pv-idm-daemon", "idm-daemon"]
+        )
 
         candidate_gui_paths = [os.path.join(exe_dir, name) for name in candidate_gui_names]
         candidate_gui_paths.extend([shutil.which(name) for name in candidate_gui_names if shutil.which(name)])
         if sys.platform != "win32":
+            candidate_gui_paths.append(os.path.expanduser("~/.local/bin/pv-idm-gui"))
             candidate_gui_paths.append(os.path.expanduser("~/.local/bin/idm-gui"))
 
         for gui_path in candidate_gui_paths:
@@ -130,21 +139,27 @@ def ensure_idm_running(client: IPCClient) -> bool:
     except Exception:
         pass
 
-    # 2. Fallback to installed idm-gui binary if present
-    candidate_gui = (
-        shutil.which("idm-gui.exe") or shutil.which("idm-gui")
+    # 2. Fallback to installed gui binary if present
+    candidate_gui_names = (
+        ["pv-idm-gui.exe", "pv-idm-gui", "idm-gui.exe", "idm-gui"]
         if sys.platform == "win32"
-        else (shutil.which("idm-gui") or os.path.expanduser("~/.local/bin/idm-gui"))
+        else ["pv-idm-gui", "idm-gui"]
     )
-    if candidate_gui and os.path.exists(candidate_gui):
-        try:
-            subprocess.Popen([candidate_gui, "--minimized"], **popen_kwargs)
-            for _ in range(15):
-                time.sleep(0.15)
-                if client.is_server_running():
-                    return True
-        except Exception:
-            pass
+    for name in candidate_gui_names:
+        candidate_gui = shutil.which(name)
+        if not candidate_gui and sys.platform != "win32":
+            user_path = os.path.expanduser(f"~/.local/bin/{name}")
+            if os.path.exists(user_path):
+                candidate_gui = user_path
+        if candidate_gui and os.path.exists(candidate_gui):
+            try:
+                subprocess.Popen([candidate_gui, "--minimized"], **popen_kwargs)
+                for _ in range(15):
+                    time.sleep(0.15)
+                    if client.is_server_running():
+                        return True
+            except Exception:
+                pass
 
     # 3. Fallback to headless daemon directly
     try:
@@ -168,7 +183,7 @@ def handle_browser_message(msg: Dict[str, Any], ipc_client: Optional[IPCClient] 
         return {
             "status": "ok",
             "pong": True,
-            "app": "IDM Linux",
+            "app": "PV-IDM",
             "version": idm_core.__version__,
             "engine_running": is_running
         }

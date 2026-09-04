@@ -16,7 +16,7 @@ class TestGUIMain(unittest.TestCase):
     def test_main_window_creation(self):
         window = MainWindow()
         self.assertIsNotNone(window)
-        self.assertEqual(window.windowTitle(), "IDM Linux - Internet Download Manager")
+        self.assertEqual(window.windowTitle(), "PV-IDM - Internet Download Manager")
         self.assertIsNotNone(window.table)
         self.assertIsNotNone(window.category_tree)
         window.close()
@@ -25,6 +25,7 @@ class TestGUIMain(unittest.TestCase):
         window = MainWindow()
         tray = IDMTrayIcon(window)
         self.assertIsNotNone(tray)
+        self.assertEqual(tray.toolTip(), "PV-IDM - Internet Download Manager")
         window.close()
 
 

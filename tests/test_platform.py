@@ -44,7 +44,25 @@ class TestPlatformAbstraction(unittest.TestCase):
         with patch("idm_core.platform.is_windows", return_value=True), \
              patch.dict(os.environ, {"APPDATA": "C:\\Users\\Test\\AppData\\Roaming"}):
             cfg = get_config_dir()
-            self.assertEqual(cfg, os.path.join("C:\\Users\\Test\\AppData\\Roaming", "idm-linux"))
+            self.assertEqual(cfg, os.path.join("C:\\Users\\Test\\AppData\\Roaming", "pv-idm"))
+
+    def test_get_config_dir_legacy_fallback(self):
+        with patch("os.path.exists", side_effect=lambda p: p.endswith("idm-linux")):
+            cfg = get_config_dir()
+            self.assertTrue(cfg.endswith("idm-linux"))
+
+    def test_get_config_dir_legacy_fallback_when_target_empty(self):
+        # Target exists (e.g. created by native host registration), but legacy has idm.db
+        def mock_exists(p):
+            if "idm-linux" in p:
+                return True
+            if p.endswith("pv-idm"):
+                return True
+            return False
+
+        with patch("os.path.exists", side_effect=mock_exists):
+            cfg = get_config_dir()
+            self.assertTrue(cfg.endswith("idm-linux"))
 
     def test_get_download_dir_simulated_windows(self):
         with patch("idm_core.platform.is_windows", return_value=True), \
@@ -141,6 +159,16 @@ class TestPlatformAbstraction(unittest.TestCase):
         finally:
             if os.path.exists(temp_bin):
                 os.remove(temp_bin)
+
+    def test_resolve_native_host_binary_pv_idm(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            pv_host = os.path.join(tmp_dir, "pv-idm-native-host")
+            with open(pv_host, "w") as f:
+                f.write("#!/bin/sh\n")
+            os.chmod(pv_host, 0o755)
+            with patch("shutil.which", side_effect=lambda name: pv_host if name == "pv-idm-native-host" else None):
+                resolved = resolve_native_host_binary()
+                self.assertEqual(resolved, os.path.abspath(pv_host))
 
     def test_is_native_messaging_host_registered(self):
         res = is_native_messaging_host_registered()
