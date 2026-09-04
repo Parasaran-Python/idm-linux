@@ -25,6 +25,8 @@ idm = "idm_cli.cli:main"
 idm-gui = "idm_gui.app:main"
 idm-daemon = "idm_ipc.daemon:main"
 idm-native-host = "idm_native_host.host:main"
+idm-linux = "idm_cli.cli:main"
+idm-linux-gui = "idm_gui.app:main"
 
 [tool.setuptools.packages.find]
 where = ["."]

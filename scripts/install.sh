@@ -5,7 +5,12 @@ REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BIN_DIR="${HOME}/.local/bin"
 DESKTOP_DIR="${HOME}/.local/share/applications"
 ICON_DIR="${HOME}/.local/share/icons/hicolor/128x128/apps"
-PYTHON_BIN="${PYTHON_BIN:-/run/media/parasaran/Dev/SDK/python/install/bin/python3}"
+PYTHON_BIN="${PYTHON_BIN:-$(command -v python3 || echo "python3")}"
+PY_VER="$("${PYTHON_BIN}" -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")' 2>/dev/null || echo "")"
+EXTRA_PY_PATHS="/usr/lib/python3/dist-packages"
+if [ -n "${PY_VER}" ]; then
+    EXTRA_PY_PATHS="${EXTRA_PY_PATHS}:/usr/local/lib/python${PY_VER}/dist-packages"
+fi
 
 echo "========================================================"
 echo "          Installing PV-IDM Integration                 "
@@ -13,34 +18,36 @@ echo "========================================================"
 
 mkdir -p "${BIN_DIR}" "${DESKTOP_DIR}" "${ICON_DIR}"
 
-# 1. Create CLI Wrapper (`pv-idm` & `idm`)
+# 1. Create CLI Wrapper (`pv-idm`, `idm`, `idm-linux`)
 cat << EOF > "${BIN_DIR}/pv-idm"
 #!/bin/bash
 REPO_DIR="${REPO_DIR}"
 PYTHON_BIN="${PYTHON_BIN}"
-export PYTHONPATH="/usr/lib/python3/dist-packages:/usr/local/lib/python3.14/dist-packages:\${REPO_DIR}:\$PYTHONPATH"
+export PYTHONPATH="${EXTRA_PY_PATHS}:\${REPO_DIR}:\$PYTHONPATH"
 exec "\${PYTHON_BIN}" -m idm_cli.cli "\$@"
 EOF
 chmod +x "${BIN_DIR}/pv-idm"
 ln -sf "${BIN_DIR}/pv-idm" "${BIN_DIR}/idm"
+ln -sf "${BIN_DIR}/pv-idm" "${BIN_DIR}/idm-linux"
 
-# 2. Create GUI Wrapper (`pv-idm-gui` & `idm-gui`)
+# 2. Create GUI Wrapper (`pv-idm-gui`, `idm-gui`, `idm-linux-gui`)
 cat << EOF > "${BIN_DIR}/pv-idm-gui"
 #!/bin/bash
 REPO_DIR="${REPO_DIR}"
 PYTHON_BIN="${PYTHON_BIN}"
-export PYTHONPATH="/usr/lib/python3/dist-packages:/usr/local/lib/python3.14/dist-packages:\${REPO_DIR}:\$PYTHONPATH"
+export PYTHONPATH="${EXTRA_PY_PATHS}:\${REPO_DIR}:\$PYTHONPATH"
 exec "\${PYTHON_BIN}" -m idm_gui.app "\$@"
 EOF
 chmod +x "${BIN_DIR}/pv-idm-gui"
 ln -sf "${BIN_DIR}/pv-idm-gui" "${BIN_DIR}/idm-gui"
+ln -sf "${BIN_DIR}/pv-idm-gui" "${BIN_DIR}/idm-linux-gui"
 
-# 3. Create Daemon Wrapper (`pv-idm-daemon` & `idm-daemon`)
+# 3. Create Daemon Wrapper (`pv-idm-daemon`, `idm-daemon`)
 cat << EOF > "${BIN_DIR}/pv-idm-daemon"
 #!/bin/bash
 REPO_DIR="${REPO_DIR}"
 PYTHON_BIN="${PYTHON_BIN}"
-export PYTHONPATH="/usr/lib/python3/dist-packages:/usr/local/lib/python3.14/dist-packages:\${REPO_DIR}:\$PYTHONPATH"
+export PYTHONPATH="${EXTRA_PY_PATHS}:\${REPO_DIR}:\$PYTHONPATH"
 exec "\${PYTHON_BIN}" -m idm_ipc.daemon "\$@"
 EOF
 chmod +x "${BIN_DIR}/pv-idm-daemon"
@@ -56,10 +63,11 @@ for sz in 16 32 48 128 256 512; do
     fi
 done
 cp "${REPO_DIR}/scripts/pv-idm.desktop" "${DESKTOP_DIR}/pv-idm.desktop"
+ln -sf "${DESKTOP_DIR}/pv-idm.desktop" "${DESKTOP_DIR}/idm-linux.desktop"
 
 # 5. Register Browser Native Messaging Hosts
 echo "[*] Registering Browser Native Messaging Hosts..."
-PYTHONPATH="/usr/lib/python3/dist-packages:/usr/local/lib/python3.14/dist-packages:${REPO_DIR}:$PYTHONPATH" \
+PYTHONPATH="${EXTRA_PY_PATHS}:${REPO_DIR}:$PYTHONPATH" \
   "${PYTHON_BIN}" "${REPO_DIR}/scripts/install_native_host.py"
 
 # 6. Update Desktop and Icon Databases if available

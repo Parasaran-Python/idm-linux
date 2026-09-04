@@ -25,6 +25,7 @@ class TestGUIMain(unittest.TestCase):
         window = MainWindow()
         tray = IDMTrayIcon(window)
         self.assertIsNotNone(tray)
+        self.assertEqual(tray.toolTip(), "PV-IDM - Internet Download Manager")
         window.close()
 
 

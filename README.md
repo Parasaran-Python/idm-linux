@@ -158,42 +158,44 @@ pv-idm-gui
 
 ### Command Line Interface (CLI)
 
+> **Note:** Both `pv-idm` and the short alias `idm` (as well as `idm-linux`) are supported.
+
 #### Add a new download:
 ```bash
-idm add "https://example.com/large_archive.zip"
+pv-idm add "https://example.com/large_archive.zip"
 ```
 
 #### Specify destination and connections:
 ```bash
-idm add "https://example.com/video.mp4" -o ~/Videos/movie.mp4 -c 16
+pv-idm add "https://example.com/video.mp4" -o ~/Videos/movie.mp4 -c 16
 ```
 
 #### Add to queue without starting immediately:
 ```bash
-idm add "https://example.com/backup.iso" --later
+pv-idm add "https://example.com/backup.iso" --later
 ```
 
 #### List all downloads:
 ```bash
-idm list
+pv-idm list
 ```
 
 #### Pause / Resume / Delete:
 ```bash
-idm pause dl-8f92a1
-idm resume dl-8f92a1
-idm delete dl-8f92a1 --files
+pv-idm pause dl-8f92a1
+pv-idm resume dl-8f92a1
+pv-idm delete dl-8f92a1 --files
 ```
 
 #### Manage Queues:
 ```bash
-idm queue start main
-idm queue stop main
+pv-idm queue start main
+pv-idm queue stop main
 ```
 
 #### Check Daemon Status:
 ```bash
-idm status
+pv-idm status
 ```
 
 ---
