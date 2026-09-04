@@ -746,6 +746,19 @@ def register_native_messaging_host(
             py_exec = py_exec[:-10] + "python.exe"
         script_content = f"""@echo off
 setlocal
+where pv-idm-native-host.exe >nul 2>nul
+if %ERRORLEVEL% equ 0 (
+    pv-idm-native-host.exe %*
+    exit /b %ERRORLEVEL%
+)
+if exist "%~dp0pv-idm-native-host.exe" (
+    "%~dp0pv-idm-native-host.exe" %*
+    exit /b %ERRORLEVEL%
+)
+if exist "%~dp0..\\pv-idm-native-host.exe" (
+    "%~dp0..\\pv-idm-native-host.exe" %*
+    exit /b %ERRORLEVEL%
+)
 where idm-native-host.exe >nul 2>nul
 if %ERRORLEVEL% equ 0 (
     idm-native-host.exe %*

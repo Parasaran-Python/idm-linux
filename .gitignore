@@ -11,5 +11,7 @@ build/
 *.part
 temp/
 .playwright-mcp/
+scripts/*-native-host-wrapper.*
 scripts/idm-native-host-wrapper.sh
+scripts/pv-idm-native-host-wrapper.sh
 bin/
