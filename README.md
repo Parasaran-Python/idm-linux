@@ -56,9 +56,9 @@
                     | Local IPC                             | Local IPC
 +-------------------+-------------------+   +---------------+-------------------+
 |            PyQt6 Desktop GUI          |   |              CLI Tool             |
-|  * Main Window & Toolbar              |   |  * idm add <url>                  |
-|  * Dynamic Segment Visualizer         |   |  * idm list / pause / resume      |
-|  * Download Info & Progress Dialogs   |   |  * idm queue start / stop         |
+|  * Main Window & Toolbar              |   |  * pv-idm add <url>               |
+|  * Dynamic Segment Visualizer         |   |  * pv-idm list / pause / resume   |
+|  * Download Info & Progress Dialogs   |   |  * pv-idm queue start / stop      |
 |  * Scheduler & Queue Dialog           |   +-----------------------------------+
 |  * Options & Settings Dialog          |
 |  * System Tray & Notifications        |
@@ -88,7 +88,7 @@
 - **System Tray**: Minimizes to Linux system tray with live speed tooltips and desktop notifications.
 
 ### ⌨ Powerful CLI Tool
-- Full command-line control (`idm add`, `idm list`, `idm pause`, `idm resume`, `idm queue`).
+- Full command-line control (`pv-idm add`, `pv-idm list`, `pv-idm pause`, `pv-idm resume`, `pv-idm queue`).
 
 ---
 
