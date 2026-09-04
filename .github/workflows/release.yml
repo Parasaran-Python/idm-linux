@@ -121,6 +121,7 @@ jobs:
 
       - name: Create Windows Release ZIP
         run: |
+          Copy-Item scripts/install-native-host.bat dist/idm-linux/
           Compress-Archive -Path dist/idm-linux/* -DestinationPath dist/idm-windows-standalone-x86_64.zip -Force
 
       - name: Upload Windows Artifacts

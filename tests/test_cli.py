@@ -58,6 +58,25 @@ class TestCLI(unittest.TestCase):
         ret = run_cli_command(parser.parse_args(["status"]), client=mock_client)
         self.assertEqual(ret, 0)
 
+    @patch("idm_core.platform.register_native_messaging_host", return_value={"manifest_path": "foo", "targets": ["Chrome"]})
+    def test_run_cli_install_native_host(self, mock_reg):
+        parser = build_parser()
+        args = parser.parse_args(["install-native-host", "-b", "C:\\idm-native-host.exe", "--chrome-id", "abcdef"])
+        self.assertEqual(args.command, "install-native-host")
+        self.assertEqual(args.binary_path, "C:\\idm-native-host.exe")
+        self.assertEqual(args.chrome_ids, ["abcdef"])
+        ret = run_cli_command(args)
+        self.assertEqual(ret, 0)
+        mock_reg.assert_called_once_with(binary_path="C:\\idm-native-host.exe", additional_chrome_ids=["abcdef"])
+
+    @patch("idm_core.platform.unregister_native_messaging_host", return_value={"targets": ["Chrome"]})
+    def test_run_cli_uninstall_native_host(self, mock_unreg):
+        parser = build_parser()
+        args = parser.parse_args(["install-native-host", "--uninstall"])
+        ret = run_cli_command(args)
+        self.assertEqual(ret, 0)
+        mock_unreg.assert_called_once()
+
 
 if __name__ == "__main__":
     unittest.main()

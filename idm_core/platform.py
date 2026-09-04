@@ -4,11 +4,14 @@ Provides cross-platform paths, OS detection, binary resolution, and system actio
 Supports Linux, Windows, and macOS.
 """
 
+import base64
+import hashlib
+import json
 import os
 import shutil
 import subprocess
 import sys
-from typing import Optional
+from typing import List, Optional, Tuple
 
 
 def is_windows() -> bool:
@@ -482,3 +485,357 @@ def show_desktop_notification(title: str, message: str, icon_path: Optional[str]
             pass
 
     return False
+
+
+# =====================================================================
+# Native Messaging Host Registration & Discovery
+# =====================================================================
+
+NATIVE_HOST_NAME = "com.idm.linux.native_host"
+
+
+def derive_chrome_extension_id(key_b64: str) -> str:
+    """Compute 32-character Chrome extension ID from public key DER base64."""
+    try:
+        der = base64.b64decode(key_b64)
+        sha = hashlib.sha256(der).digest()
+        return "".join(chr(ord("a") + (b >> 4)) + chr(ord("a") + (b & 0x0F)) for b in sha[:16])
+    except Exception:
+        return ""
+
+
+def get_default_chrome_extension_ids(repo_root: Optional[str] = None) -> List[str]:
+    """Extract standard extension IDs from manifest.json and defaults."""
+    ids = set()
+    root = repo_root or os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    manifest_path = os.path.join(root, "extension", "manifest.json")
+    if os.path.exists(manifest_path):
+        try:
+            with open(manifest_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                key = data.get("key")
+                if key:
+                    derived_id = derive_chrome_extension_id(key)
+                    if derived_id:
+                        ids.add(derived_id)
+        except Exception:
+            pass
+
+    # Ensure known fixed ID is present
+    if not ids:
+        ids.add("cacfhfpjipjnanbefddajafhgpmpibej")
+    return sorted(list(ids))
+
+
+def resolve_native_host_binary(explicit_path: Optional[str] = None, repo_root: Optional[str] = None) -> Optional[str]:
+    """
+    Locate the native messaging host binary (idm-native-host.exe on Windows, idm-native-host on Linux).
+    Checks explicit path, next to running executable, parent directories (handles _internal/ in PyInstaller),
+    repo paths, and PATH.
+    """
+    if explicit_path and os.path.exists(explicit_path):
+        return os.path.abspath(explicit_path)
+
+    base_name = "idm-native-host"
+    exe_name = get_binary_name(base_name)
+
+    # 1. Standard resolve_binary lookup (MEIPASS, argv[0], bin, PATH)
+    found = resolve_binary(base_name)
+    if found and os.path.isfile(found):
+        return os.path.abspath(found)
+
+    # 2. Check around sys.executable (essential for PyInstaller frozen app and pip venv)
+    py_exec = sys.executable or ""
+    if py_exec:
+        app_dir = os.path.dirname(os.path.abspath(py_exec))
+        candidates = [
+            os.path.join(app_dir, exe_name),
+            os.path.join(app_dir, "..", exe_name),
+            os.path.join(app_dir, "Scripts", exe_name),
+            os.path.join(app_dir, "bin", exe_name),
+        ]
+        for c in candidates:
+            if os.path.isfile(c):
+                return os.path.abspath(c)
+
+    # 3. Check around repo_root and _internal structure
+    root = repo_root or os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    repo_candidates = [
+        os.path.join(root, exe_name),
+        os.path.join(root, "..", exe_name),
+        os.path.join(root, "dist", "idm-linux", exe_name),
+    ]
+    for c in repo_candidates:
+        if os.path.isfile(c):
+            return os.path.abspath(c)
+
+    # 4. Global fallback to PATH
+    which_path = shutil.which(exe_name) or shutil.which(base_name)
+    if which_path:
+        return os.path.abspath(which_path)
+
+    return None
+
+
+def is_native_messaging_host_registered() -> bool:
+    """
+    Check if the native messaging host is registered in the OS for standard browsers.
+    Returns True if valid registration exists and points to an existing host binary.
+    """
+    if is_windows():
+        try:
+            import winreg
+            reg_paths = [
+                r"Software\Google\Chrome\NativeMessagingHosts",
+                r"Software\Microsoft\Edge\NativeMessagingHosts",
+                r"Software\Mozilla\NativeMessagingHosts",
+            ]
+            for rp in reg_paths:
+                full_key = f"{rp}\\{NATIVE_HOST_NAME}"
+                try:
+                    with winreg.OpenKey(winreg.HKEY_CURRENT_USER, full_key) as k:
+                        manifest_path = winreg.QueryValue(k, "")
+                        if manifest_path and os.path.isfile(manifest_path):
+                            with open(manifest_path, "r", encoding="utf-8") as f:
+                                data = json.load(f)
+                            host_bin = data.get("path", "")
+                            if host_bin and os.path.exists(host_bin):
+                                return True
+                except Exception:
+                    continue
+            return False
+        except Exception:
+            return False
+    else:
+        home = os.path.expanduser("~")
+        candidate_manifests = [
+            os.path.join(home, ".config", "google-chrome", "NativeMessagingHosts", f"{NATIVE_HOST_NAME}.json"),
+            os.path.join(home, ".config", "chromium", "NativeMessagingHosts", f"{NATIVE_HOST_NAME}.json"),
+            os.path.join(home, ".mozilla", "native-messaging-hosts", f"{NATIVE_HOST_NAME}.json"),
+        ]
+        for cm in candidate_manifests:
+            if os.path.isfile(cm):
+                try:
+                    with open(cm, "r", encoding="utf-8") as f:
+                        data = json.load(f)
+                    host_bin = data.get("path", "")
+                    if host_bin and os.path.exists(host_bin):
+                        return True
+                except Exception:
+                    pass
+        return False
+
+
+def register_native_messaging_host(
+    binary_path: Optional[str] = None,
+    custom_chrome_ids: Optional[List[str]] = None,
+    repo_root: Optional[str] = None
+) -> Tuple[bool, int, str]:
+    """
+    Install and register native messaging host manifests for Chrome, Edge, Brave, and Firefox.
+    Returns (success, installed_locations_count, resolved_host_path).
+    """
+    root = repo_root or os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    resolved_binary = resolve_native_host_binary(binary_path, root)
+
+    host_path = ""
+    if resolved_binary:
+        host_path = resolved_binary
+    elif is_windows():
+        # Fallback to permanent wrapper script on Windows
+        base_dir = os.environ.get("LOCALAPPDATA") or os.environ.get("APPDATA") or os.path.expanduser("~")
+        native_dir = os.path.join(base_dir, "idm-linux", "native-messaging-hosts")
+        os.makedirs(native_dir, exist_ok=True)
+        host_path = os.path.join(native_dir, "idm-native-host-wrapper.bat")
+        py_exec = sys.executable or "python.exe"
+        if py_exec.lower().endswith("pythonw.exe"):
+            py_exec = py_exec[:-10] + "python.exe"
+        script_content = f"""@echo off
+setlocal
+where idm-native-host.exe >nul 2>nul
+if %ERRORLEVEL% equ 0 (
+    idm-native-host.exe %*
+    exit /b %ERRORLEVEL%
+)
+if exist "%~dp0idm-native-host.exe" (
+    "%~dp0idm-native-host.exe" %*
+    exit /b %ERRORLEVEL%
+)
+if exist "%~dp0..\\idm-native-host.exe" (
+    "%~dp0..\\idm-native-host.exe" %*
+    exit /b %ERRORLEVEL%
+)
+set "PYTHONPATH={root};%PYTHONPATH%"
+"{py_exec}" -m idm_native_host.host %*
+"""
+        with open(host_path, "w", encoding="utf-8") as f:
+            f.write(script_content)
+    else:
+        # Linux / POSIX shell wrapper
+        host_path = os.path.join(root, "scripts", "idm-native-host-wrapper.sh")
+        py_exec = sys.executable or "/usr/bin/python3"
+        script_content = f"""#!/bin/bash
+export PYTHONPATH="/usr/lib/python3/dist-packages:/usr/local/lib/python3.14/dist-packages:{root}:$PYTHONPATH"
+exec "{py_exec}" -m idm_native_host.host "$@"
+"""
+        os.makedirs(os.path.dirname(os.path.abspath(host_path)), exist_ok=True)
+        with open(host_path, "w", encoding="utf-8") as f:
+            f.write(script_content)
+        try:
+            st = os.stat(host_path)
+            os.chmod(host_path, st.st_mode | 0o755)
+        except Exception:
+            pass
+
+    # Collect Chrome / Chromium extension IDs
+    chrome_ids = get_default_chrome_extension_ids(root)
+    if custom_chrome_ids:
+        for cid in custom_chrome_ids:
+            clean_id = (cid or "").strip()
+            if clean_id and clean_id not in chrome_ids:
+                chrome_ids.append(clean_id)
+
+    env_id = os.environ.get("IDM_CHROME_EXTENSION_ID")
+    if env_id and env_id.strip() not in chrome_ids:
+        chrome_ids.append(env_id.strip())
+
+    allowed_origins = [f"chrome-extension://{cid}/" for cid in chrome_ids]
+
+    chrome_manifest = {
+        "name": NATIVE_HOST_NAME,
+        "description": "IDM Linux Browser Integration Native Messaging Host",
+        "path": host_path,
+        "type": "stdio",
+        "allowed_origins": allowed_origins
+    }
+
+    firefox_manifest = {
+        "name": NATIVE_HOST_NAME,
+        "description": "IDM Linux Browser Integration Native Messaging Host",
+        "path": host_path,
+        "type": "stdio",
+        "allowed_extensions": [
+            "idm-linux@idm-linux.local"
+        ]
+    }
+
+    installed_count = 0
+
+    if is_windows():
+        try:
+            import winreg
+            base_dir = os.environ.get("LOCALAPPDATA") or os.environ.get("APPDATA") or os.path.expanduser("~")
+            manifests_dir = os.path.join(base_dir, "idm-linux", "native-messaging-hosts")
+            os.makedirs(manifests_dir, exist_ok=True)
+
+            chrome_manifest_file = os.path.join(manifests_dir, f"{NATIVE_HOST_NAME}.json")
+            firefox_manifest_file = os.path.join(manifests_dir, f"{NATIVE_HOST_NAME}.firefox.json")
+
+            with open(chrome_manifest_file, "w", encoding="utf-8") as f:
+                json.dump(chrome_manifest, f, indent=2)
+            with open(firefox_manifest_file, "w", encoding="utf-8") as f:
+                json.dump(firefox_manifest, f, indent=2)
+
+            reg_paths_chrome = [
+                r"Software\Google\Chrome\NativeMessagingHosts",
+                r"Software\Microsoft\Edge\NativeMessagingHosts",
+                r"Software\BraveSoftware\Brave-Browser\NativeMessagingHosts",
+            ]
+            for rp in reg_paths_chrome:
+                try:
+                    full_key = f"{rp}\\{NATIVE_HOST_NAME}"
+                    with winreg.CreateKey(winreg.HKEY_CURRENT_USER, full_key) as k:
+                        winreg.SetValueEx(k, "", 0, winreg.REG_SZ, chrome_manifest_file)
+                    installed_count += 1
+                except Exception:
+                    pass
+
+            try:
+                ff_key = f"Software\\Mozilla\\NativeMessagingHosts\\{NATIVE_HOST_NAME}"
+                with winreg.CreateKey(winreg.HKEY_CURRENT_USER, ff_key) as k:
+                    winreg.SetValueEx(k, "", 0, winreg.REG_SZ, firefox_manifest_file)
+                installed_count += 1
+            except Exception:
+                pass
+
+        except Exception:
+            pass
+    else:
+        home = os.path.expanduser("~")
+        chromium_targets = [
+            os.path.join(home, ".config", "google-chrome", "NativeMessagingHosts"),
+            os.path.join(home, ".config", "chromium", "NativeMessagingHosts"),
+            os.path.join(home, ".config", "BraveSoftware", "Brave-Browser", "NativeMessagingHosts"),
+            os.path.join(home, ".config", "microsoft-edge", "NativeMessagingHosts"),
+            os.path.join(home, ".config", "opera", "NativeMessagingHosts"),
+            os.path.join(home, ".config", "vivaldi", "NativeMessagingHosts"),
+        ]
+        firefox_targets = [
+            os.path.join(home, ".mozilla", "native-messaging-hosts"),
+            os.path.join(home, ".librewolf", "native-messaging-hosts"),
+        ]
+
+        for target_dir in chromium_targets:
+            try:
+                os.makedirs(target_dir, exist_ok=True)
+                manifest_file = os.path.join(target_dir, f"{NATIVE_HOST_NAME}.json")
+                with open(manifest_file, "w", encoding="utf-8") as f:
+                    json.dump(chrome_manifest, f, indent=2)
+                installed_count += 1
+            except Exception:
+                pass
+
+        for target_dir in firefox_targets:
+            try:
+                os.makedirs(target_dir, exist_ok=True)
+                manifest_file = os.path.join(target_dir, f"{NATIVE_HOST_NAME}.json")
+                with open(manifest_file, "w", encoding="utf-8") as f:
+                    json.dump(firefox_manifest, f, indent=2)
+                installed_count += 1
+            except Exception:
+                pass
+
+    return installed_count > 0, installed_count, host_path
+
+
+def unregister_native_messaging_host() -> bool:
+    """Unregister and clean up native messaging host manifests and registry keys."""
+    removed = False
+    if is_windows():
+        try:
+            import winreg
+            reg_paths = [
+                r"Software\Google\Chrome\NativeMessagingHosts",
+                r"Software\Microsoft\Edge\NativeMessagingHosts",
+                r"Software\BraveSoftware\Brave-Browser\NativeMessagingHosts",
+                r"Software\Mozilla\NativeMessagingHosts",
+            ]
+            for rp in reg_paths:
+                try:
+                    winreg.DeleteKey(winreg.HKEY_CURRENT_USER, f"{rp}\\{NATIVE_HOST_NAME}")
+                    removed = True
+                except Exception:
+                    pass
+        except Exception:
+            pass
+    else:
+        home = os.path.expanduser("~")
+        dirs = [
+            os.path.join(home, ".config", "google-chrome", "NativeMessagingHosts"),
+            os.path.join(home, ".config", "chromium", "NativeMessagingHosts"),
+            os.path.join(home, ".config", "BraveSoftware", "Brave-Browser", "NativeMessagingHosts"),
+            os.path.join(home, ".config", "microsoft-edge", "NativeMessagingHosts"),
+            os.path.join(home, ".config", "opera", "NativeMessagingHosts"),
+            os.path.join(home, ".config", "vivaldi", "NativeMessagingHosts"),
+            os.path.join(home, ".mozilla", "native-messaging-hosts"),
+            os.path.join(home, ".librewolf", "native-messaging-hosts"),
+        ]
+        for d in dirs:
+            mf = os.path.join(d, f"{NATIVE_HOST_NAME}.json")
+            if os.path.exists(mf):
+                try:
+                    os.remove(mf)
+                    removed = True
+                except Exception:
+                    pass
+    return removed

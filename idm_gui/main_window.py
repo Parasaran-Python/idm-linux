@@ -169,8 +169,14 @@ class MainWindow(QMainWindow):
         options_act = dl_menu.addAction("&Options...")
         options_act.triggered.connect(self.open_options_dialog)
 
+        browser_act = dl_menu.addAction("Register &Browser Integration...")
+        browser_act.triggered.connect(self._register_browser_integration)
+
         # 4. Help Menu
         help_menu = menubar.addMenu("&Help")
+        help_browser_act = help_menu.addAction("Register &Browser Integration...")
+        help_browser_act.triggered.connect(self._register_browser_integration)
+        help_menu.addSeparator()
         about_act = help_menu.addAction("&About IDM Linux")
         about_act.triggered.connect(self._show_about)
 
@@ -546,6 +552,28 @@ class MainWindow(QMainWindow):
             "floating video sniffer, queue scheduler, and native IPC.</p>"
             "<p><b>License:</b> GNU General Public License v3.0 (GPL-3.0)</p>"
         )
+
+    def _register_browser_integration(self):
+        """Install or register native messaging host for Chrome/Firefox browsers."""
+        try:
+            from idm_core.platform import register_native_messaging_host
+            res = register_native_messaging_host()
+            targets_str = "\n".join(f" - {t}" for t in res.get("targets", []))
+            manifest = res.get("manifest_path", "Manifest created")
+            QMessageBox.information(
+                self,
+                "Browser Integration",
+                f"Browser native messaging host registered successfully!\n\n"
+                f"Manifest:\n{manifest}\n\n"
+                f"Configured targets:\n{targets_str}\n\n"
+                f"Please restart your browser or reload the IDM extension if needed."
+            )
+        except Exception as e:
+            QMessageBox.critical(
+                self,
+                "Browser Integration Error",
+                f"Failed to register browser integration:\n{e}"
+            )
 
     def quit_application(self):
         self.engine.shutdown()

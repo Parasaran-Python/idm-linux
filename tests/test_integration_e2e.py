@@ -93,7 +93,7 @@ class TestE2EIntegration(unittest.TestCase):
     def tearDown(self):
         self.ipc_server.stop()
         self.engine.shutdown()
-        shutil.rmtree(self.test_dir)
+        shutil.rmtree(self.test_dir, ignore_errors=True)
 
     def test_full_e2e_pipeline(self):
         # 1. Simulate browser native messaging interception

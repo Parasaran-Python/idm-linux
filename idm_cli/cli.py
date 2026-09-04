@@ -7,7 +7,7 @@ import argparse
 import os
 import sys
 from typing import Any, Dict, List, Optional
-from idm_gui.widgets.download_table import format_bytes, format_speed, format_time
+from idm_core.formatters import format_bytes, format_speed, format_time
 from idm_ipc.socket_client import IPCClient
 
 
@@ -56,6 +56,28 @@ def build_parser() -> argparse.ArgumentParser:
 
     # 8. Status
     subparsers.add_parser("status", help="Check IDM daemon and download status")
+
+    # 9. Native Host / Browser Registration
+    browser_parser = subparsers.add_parser(
+        "install-native-host",
+        aliases=["register-browser"],
+        help="Register browser native messaging host for Chrome, Edge, and Firefox",
+    )
+    browser_parser.add_argument(
+        "-b", "--binary-path",
+        help="Explicit path to idm-native-host executable",
+    )
+    browser_parser.add_argument(
+        "--chrome-id",
+        action="append",
+        dest="chrome_ids",
+        help="Additional Chrome/Chromium extension ID to allow",
+    )
+    browser_parser.add_argument(
+        "-u", "--uninstall",
+        action="store_true",
+        help="Unregister browser native messaging host",
+    )
 
     return parser
 
@@ -156,6 +178,27 @@ def run_cli_command(args: argparse.Namespace, client: Optional[IPCClient] = None
             return 0
         print(f"[Error] {res.get('error')}")
         return 1
+
+    elif args.command in ["install-native-host", "register-browser"]:
+        from idm_core.platform import register_native_messaging_host, unregister_native_messaging_host
+        if getattr(args, "uninstall", False):
+            res = unregister_native_messaging_host()
+            print(f"[OK] Native messaging host unregistered from {len(res.get('targets', []))} targets.")
+            return 0
+        else:
+            try:
+                res = register_native_messaging_host(
+                    binary_path=getattr(args, "binary_path", None),
+                    additional_chrome_ids=getattr(args, "chrome_ids", None),
+                )
+                print("[OK] Native messaging host registered successfully!")
+                print(f"Manifest: {res.get('manifest_path')}")
+                for t in res.get("targets", []):
+                    print(f" - {t}")
+                return 0
+            except Exception as e:
+                print(f"[Error] Failed to register native messaging host: {e}")
+                return 1
 
     return 0
 
