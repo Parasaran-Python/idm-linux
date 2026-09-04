@@ -38,7 +38,7 @@ jobs:
       # 2. Build Standalone Linux Executable with PyInstaller
       - name: Build Standalone Binary (PyInstaller)
         run: |
-          pyinstaller --name idm-linux \
+          pyinstaller --name pv-idm \
             --onedir \
             --windowed \
             --add-data "extension/icons:extension/icons" \
@@ -47,7 +47,7 @@ jobs:
             idm_gui/app.py
           
           # Bundle into distributable tarball
-          cd dist && tar -czvf idm-linux-standalone-x86_64.tar.gz idm-linux/ && cd ..
+          cd dist && tar -czvf pv-idm-standalone-x86_64.tar.gz pv-idm/ && cd ..
 
       # 3. Build AppDir & AppImage
       - name: Build AppImage
@@ -57,7 +57,7 @@ jobs:
           curl -L -o appimagetool https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage
           chmod +x appimagetool
           ./appimagetool --appimage-extract
-          ARCH=x86_64 ./squashfs-root/AppRun dist/AppDir dist/idm-linux-x86_64.AppImage || true
+          ARCH=x86_64 ./squashfs-root/AppRun dist/AppDir dist/pv-idm-x86_64.AppImage || true
 
       # 4. Package Extensions (Chrome MV3 & Firefox)
       - name: Package Browser Extensions
@@ -68,7 +68,7 @@ jobs:
       - name: Upload Build Artifacts
         uses: actions/upload-artifact@v7
         with:
-          name: idm-linux-build-artifacts
+          name: pv-idm-build-artifacts
           path: |
             dist/*.whl
             dist/*.tar.gz
@@ -117,21 +117,21 @@ jobs:
 
       - name: Build Standalone Windows Application (PyInstaller)
         run: |
-          pyinstaller --noconfirm scripts/idm-linux.spec
+          pyinstaller --noconfirm scripts/pv-idm.spec
 
       - name: Create Windows Release ZIP
         run: |
-          Copy-Item scripts/install-native-host.bat dist/idm-linux/
-          Compress-Archive -Path dist/idm-linux/* -DestinationPath dist/idm-windows-standalone-x86_64.zip -Force
+          Copy-Item scripts/install-native-host.bat dist/pv-idm/
+          Compress-Archive -Path dist/pv-idm/* -DestinationPath dist/pv-idm-windows-standalone-x86_64.zip -Force
 
       - name: Upload Windows Artifacts
         uses: actions/upload-artifact@v7
         with:
-          name: idm-windows-build-artifacts
-          path: dist/idm-windows-standalone-x86_64.zip
+          name: pv-idm-windows-build-artifacts
+          path: dist/pv-idm-windows-standalone-x86_64.zip
 
       - name: Upload Windows Package to GitHub Release
         uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/tags/')
         with:
-          files: dist/idm-windows-standalone-x86_64.zip
+          files: dist/pv-idm-windows-standalone-x86_64.zip

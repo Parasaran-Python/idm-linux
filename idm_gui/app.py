@@ -40,7 +40,7 @@ if hasattr(sys, "unraisablehook"):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="IDM Linux Desktop Application")
+    parser = argparse.ArgumentParser(description="PV-IDM Desktop Application")
     parser.add_argument("urls", nargs="*", default=[], help="Optional download URLs to add")
     parser.add_argument("--minimized", action="store_true", help="Start minimized in system tray")
     parser.add_argument("--url", help="Download URL to add immediately")
@@ -98,10 +98,10 @@ def main():
     app = QApplication(sys.argv)
     app.setQuitOnLastWindowClosed(False)
     app.setStyle("Fusion")
-    app.setApplicationName("idm-linux")
-    app.setApplicationDisplayName("IDM Linux")
-    app.setOrganizationName("IDM Linux Team")
-    app.setDesktopFileName("idm-linux.desktop")
+    app.setApplicationName("pv-idm")
+    app.setApplicationDisplayName("PV-IDM")
+    app.setOrganizationName("PV-IDM Team")
+    app.setDesktopFileName("pv-idm.desktop")
     app.setWindowIcon(create_app_icon())
     app.setStyleSheet(IDM_DARK_THEME)
 

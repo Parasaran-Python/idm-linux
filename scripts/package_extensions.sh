@@ -16,7 +16,8 @@ cp -r "${REPO_DIR}/extension/background" \
       "${REPO_DIR}/extension/manifest.json" \
       "${DIST_DIR}/chrome-extension/"
 
-(cd "${DIST_DIR}/chrome-extension" && zip -q -r "${DIST_DIR}/idm-linux-extension-chrome-mv3.zip" .)
+(cd "${DIST_DIR}/chrome-extension" && zip -q -r "${DIST_DIR}/pv-idm-extension-chrome-mv3.zip" .)
+cp "${DIST_DIR}/pv-idm-extension-chrome-mv3.zip" "${DIST_DIR}/idm-linux-extension-chrome-mv3.zip"
 
 echo "[*] Packaging Firefox Extension (MV2/MV3)..."
 rm -rf "${DIST_DIR}/firefox-extension"/*
@@ -27,12 +28,14 @@ cp -r "${REPO_DIR}/extension/background" \
       "${DIST_DIR}/firefox-extension/"
 cp "${REPO_DIR}/extension/manifest.firefox.json" "${DIST_DIR}/firefox-extension/manifest.json"
 
-(cd "${DIST_DIR}/firefox-extension" && zip -q -r "${DIST_DIR}/idm-linux-extension-firefox.zip" .)
-cp "${DIST_DIR}/idm-linux-extension-firefox.zip" "${DIST_DIR}/idm-linux-extension-firefox.xpi"
+(cd "${DIST_DIR}/firefox-extension" && zip -q -r "${DIST_DIR}/pv-idm-extension-firefox.zip" .)
+cp "${DIST_DIR}/pv-idm-extension-firefox.zip" "${DIST_DIR}/pv-idm-extension-firefox.xpi"
+cp "${DIST_DIR}/pv-idm-extension-firefox.zip" "${DIST_DIR}/idm-linux-extension-firefox.zip"
+cp "${DIST_DIR}/pv-idm-extension-firefox.xpi" "${DIST_DIR}/idm-linux-extension-firefox.xpi"
 
 rm -rf "${DIST_DIR}/chrome-extension" "${DIST_DIR}/firefox-extension"
 
 echo "[OK] Built:"
-echo "  - ${DIST_DIR}/idm-linux-extension-chrome-mv3.zip"
-echo "  - ${DIST_DIR}/idm-linux-extension-firefox.zip"
-echo "  - ${DIST_DIR}/idm-linux-extension-firefox.xpi"
+echo "  - ${DIST_DIR}/pv-idm-extension-chrome-mv3.zip"
+echo "  - ${DIST_DIR}/pv-idm-extension-firefox.zip"
+echo "  - ${DIST_DIR}/pv-idm-extension-firefox.xpi"

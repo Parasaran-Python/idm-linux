@@ -1,8 +1,8 @@
 {
   "manifest_version": 2,
-  "name": "IDM Linux Integration Module",
+  "name": "PV-IDM Integration Module",
   "version": "1.0.6",
-  "description": "Internet Download Manager (IDM) integration for Linux. Automatically intercepts downloads and provides video sniffer download panel.",
+  "description": "Internet Download Manager (PV-IDM) integration for Linux. Automatically intercepts downloads and provides video sniffer download panel.",
   "permissions": [
     "downloads",
     "nativeMessaging",
@@ -46,7 +46,7 @@
   },
   "browser_specific_settings": {
     "gecko": {
-      "id": "idm-linux@idm-linux.local",
+      "id": "pv-idm@pv-idm.local",
       "strict_min_version": "90.0"
     }
   },

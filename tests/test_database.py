@@ -31,7 +31,7 @@ class TestConfigAndDatabase(unittest.TestCase):
             total_bytes=1048576,
             category="Compressed",
             connections_count=8,
-            headers={"User-Agent": "IDM-Linux/1.0"},
+            headers={"User-Agent": "PV-IDM/1.0"},
         )
         self.assertTrue(download_id.startswith("dl-"))
 
@@ -43,7 +43,7 @@ class TestConfigAndDatabase(unittest.TestCase):
         self.assertEqual(dl["status"], "queued")
         self.assertEqual(dl["category"], "Compressed")
         self.assertEqual(dl["connections_count"], 8)
-        self.assertEqual(dl["headers"]["User-Agent"], "IDM-Linux/1.0")
+        self.assertEqual(dl["headers"]["User-Agent"], "PV-IDM/1.0")
 
     def test_update_download(self):
         download_id = self.db.add_download(

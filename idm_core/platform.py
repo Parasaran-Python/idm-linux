@@ -39,11 +39,11 @@ def get_platform_name() -> str:
 
 
 def get_config_dir(custom_dir: Optional[str] = None) -> str:
-    """
+    r"""
     Return the base configuration and data directory.
-    - Windows: %APPDATA%\\idm-linux (fallback to ~/.config/idm-linux)
-    - Linux: ~/.config/idm-linux (or $XDG_CONFIG_HOME/idm-linux)
-    - macOS: ~/Library/Application Support/idm-linux
+    - Windows: %APPDATA%\pv-idm (fallback to ~/.config/pv-idm)
+    - Linux: ~/.config/pv-idm (or $XDG_CONFIG_HOME/pv-idm)
+    - macOS: ~/Library/Application Support/pv-idm
     """
     if custom_dir:
         return os.path.abspath(custom_dir)
@@ -51,20 +51,44 @@ def get_config_dir(custom_dir: Optional[str] = None) -> str:
     if is_windows():
         appdata = os.environ.get("APPDATA")
         if appdata:
-            return os.path.join(appdata, "idm-linux")
+            target = os.path.join(appdata, "pv-idm")
+            legacy = os.path.join(appdata, "idm-linux")
+            if not os.path.exists(target) and os.path.exists(legacy):
+                return legacy
+            return target
         localappdata = os.environ.get("LOCALAPPDATA")
         if localappdata:
-            return os.path.join(localappdata, "idm-linux")
-        return os.path.expanduser("~/.config/idm-linux")
+            target = os.path.join(localappdata, "pv-idm")
+            legacy = os.path.join(localappdata, "idm-linux")
+            if not os.path.exists(target) and os.path.exists(legacy):
+                return legacy
+            return target
+        target = os.path.expanduser("~/.config/pv-idm")
+        legacy = os.path.expanduser("~/.config/idm-linux")
+        if not os.path.exists(target) and os.path.exists(legacy):
+            return legacy
+        return target
 
     if is_macos():
-        return os.path.expanduser("~/Library/Application Support/idm-linux")
+        target = os.path.expanduser("~/Library/Application Support/pv-idm")
+        legacy = os.path.expanduser("~/Library/Application Support/idm-linux")
+        if not os.path.exists(target) and os.path.exists(legacy):
+            return legacy
+        return target
 
     # Linux / FreeDesktop default
     xdg_config = os.environ.get("XDG_CONFIG_HOME")
     if xdg_config:
-        return os.path.join(xdg_config, "idm-linux")
-    return os.path.expanduser("~/.config/idm-linux")
+        target = os.path.join(xdg_config, "pv-idm")
+        legacy = os.path.join(xdg_config, "idm-linux")
+        if not os.path.exists(target) and os.path.exists(legacy):
+            return legacy
+        return target
+    target = os.path.expanduser("~/.config/pv-idm")
+    legacy = os.path.expanduser("~/.config/idm-linux")
+    if not os.path.exists(target) and os.path.exists(legacy):
+        return legacy
+    return target
 
 
 def get_download_dir() -> str:
@@ -144,7 +168,7 @@ def get_default_ipc_endpoint(config_dir: Optional[str] = None) -> str:
     """
     Return default IPC endpoint.
     - Windows: \\\\.\\pipe\\idm_ipc_socket
-    - Linux/macOS: ~/.config/idm-linux/idm.sock
+    - Linux/macOS: ~/.config/pv-idm/idm.sock
     """
     if is_windows():
         return r"\\.\pipe\idm_ipc_socket"
@@ -425,14 +449,14 @@ def show_desktop_notification(title: str, message: str, icon_path: Optional[str]
     - macOS: Uses AppleScript display notification
     Returns True if successfully dispatched, False if fallback to Qt tray is required.
     """
-    safe_title = (title or "IDM Linux").replace("`", "``").replace("'", "''").replace('"', '\\"')
+    safe_title = (title or "PV-IDM").replace("`", "``").replace("'", "''").replace('"', '\\"')
     safe_msg = (message or "").replace("`", "``").replace("'", "''").replace('"', '\\"')
 
     # 1. Windows: Try windows-toasts library
     if is_windows():
         try:
             from windows_toasts import InteractableWindowsToaster, Toast, ToastDisplayImage
-            toaster = InteractableWindowsToaster("IDM Linux", "IDMLinux.IDM.App.1.0")
+            toaster = InteractableWindowsToaster("PV-IDM", "PVIDM.IDM.App.1.0")
             toast = Toast()
             toast.text_fields = [title, message]
             if icon_path and os.path.exists(icon_path):
@@ -566,6 +590,7 @@ def resolve_native_host_binary(explicit_path: Optional[str] = None, repo_root: O
     repo_candidates = [
         os.path.join(root, exe_name),
         os.path.join(root, "..", exe_name),
+        os.path.join(root, "dist", "pv-idm", exe_name),
         os.path.join(root, "dist", "idm-linux", exe_name),
     ]
     for c in repo_candidates:
@@ -718,7 +743,7 @@ def register_native_messaging_host(
     elif is_windows():
         # Fallback to permanent wrapper script on Windows
         base_dir = os.environ.get("LOCALAPPDATA") or os.environ.get("APPDATA") or os.path.expanduser("~")
-        native_dir = os.path.join(base_dir, "idm-linux", "native-messaging-hosts")
+        native_dir = os.path.join(base_dir, "pv-idm", "native-messaging-hosts")
         os.makedirs(native_dir, exist_ok=True)
         host_path = os.path.join(native_dir, "idm-native-host-wrapper.bat")
         py_exec = sys.executable or "python.exe"
@@ -778,7 +803,7 @@ exec "{py_exec}" -m idm_native_host.host "$@"
 
     chrome_manifest = {
         "name": NATIVE_HOST_NAME,
-        "description": "IDM Linux Browser Integration Native Messaging Host",
+        "description": "PV-IDM Browser Integration Native Messaging Host",
         "path": host_path,
         "type": "stdio",
         "allowed_origins": allowed_origins
@@ -786,10 +811,11 @@ exec "{py_exec}" -m idm_native_host.host "$@"
 
     firefox_manifest = {
         "name": NATIVE_HOST_NAME,
-        "description": "IDM Linux Browser Integration Native Messaging Host",
+        "description": "PV-IDM Browser Integration Native Messaging Host",
         "path": host_path,
         "type": "stdio",
         "allowed_extensions": [
+            "pv-idm@pv-idm.local",
             "idm-linux@idm-linux.local"
         ]
     }
@@ -800,7 +826,7 @@ exec "{py_exec}" -m idm_native_host.host "$@"
         try:
             import winreg
             base_dir = os.environ.get("LOCALAPPDATA") or os.environ.get("APPDATA") or os.path.expanduser("~")
-            manifests_dir = os.path.join(base_dir, "idm-linux", "native-messaging-hosts")
+            manifests_dir = os.path.join(base_dir, "pv-idm", "native-messaging-hosts")
             os.makedirs(manifests_dir, exist_ok=True)
 
             chrome_manifest_file = os.path.join(manifests_dir, f"{NATIVE_HOST_NAME}.json")

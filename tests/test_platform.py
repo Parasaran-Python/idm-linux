@@ -44,7 +44,12 @@ class TestPlatformAbstraction(unittest.TestCase):
         with patch("idm_core.platform.is_windows", return_value=True), \
              patch.dict(os.environ, {"APPDATA": "C:\\Users\\Test\\AppData\\Roaming"}):
             cfg = get_config_dir()
-            self.assertEqual(cfg, os.path.join("C:\\Users\\Test\\AppData\\Roaming", "idm-linux"))
+            self.assertEqual(cfg, os.path.join("C:\\Users\\Test\\AppData\\Roaming", "pv-idm"))
+
+    def test_get_config_dir_legacy_fallback(self):
+        with patch("os.path.exists", side_effect=lambda p: p.endswith("idm-linux")):
+            cfg = get_config_dir()
+            self.assertTrue(cfg.endswith("idm-linux"))
 
     def test_get_download_dir_simulated_windows(self):
         with patch("idm_core.platform.is_windows", return_value=True), \

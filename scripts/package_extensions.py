@@ -54,8 +54,9 @@ def package_extensions():
             shutil.copytree(src, os.path.join(chrome_stage, s))
     shutil.copy2(os.path.join(ext_dir, "manifest.json"), os.path.join(chrome_stage, "manifest.json"))
 
-    chrome_zip = os.path.join(dist_dir, "idm-linux-extension-chrome-mv3.zip")
+    chrome_zip = os.path.join(dist_dir, "pv-idm-extension-chrome-mv3.zip")
     package_directory_to_zip(chrome_stage, chrome_zip)
+    shutil.copy2(chrome_zip, os.path.join(dist_dir, "idm-linux-extension-chrome-mv3.zip"))
 
     # 2. Stage Firefox Extension
     print("[*] Packaging Firefox Extension (MV2/MV3)...")
@@ -65,10 +66,12 @@ def package_extensions():
             shutil.copytree(src, os.path.join(firefox_stage, s))
     shutil.copy2(os.path.join(ext_dir, "manifest.firefox.json"), os.path.join(firefox_stage, "manifest.json"))
 
-    firefox_zip = os.path.join(dist_dir, "idm-linux-extension-firefox.zip")
-    firefox_xpi = os.path.join(dist_dir, "idm-linux-extension-firefox.xpi")
+    firefox_zip = os.path.join(dist_dir, "pv-idm-extension-firefox.zip")
+    firefox_xpi = os.path.join(dist_dir, "pv-idm-extension-firefox.xpi")
     package_directory_to_zip(firefox_stage, firefox_zip)
     shutil.copy2(firefox_zip, firefox_xpi)
+    shutil.copy2(firefox_zip, os.path.join(dist_dir, "idm-linux-extension-firefox.zip"))
+    shutil.copy2(firefox_xpi, os.path.join(dist_dir, "idm-linux-extension-firefox.xpi"))
 
     # Cleanup staging directories
     shutil.rmtree(chrome_stage, ignore_errors=True)

@@ -185,5 +185,5 @@ coll = COLLECT(
     strip=False,
     upx=True,
     upx_exclude=[],
-    name="idm-linux",
+    name="pv-idm",
 )

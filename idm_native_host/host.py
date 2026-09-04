@@ -168,7 +168,7 @@ def handle_browser_message(msg: Dict[str, Any], ipc_client: Optional[IPCClient] 
         return {
             "status": "ok",
             "pong": True,
-            "app": "IDM Linux",
+            "app": "PV-IDM",
             "version": idm_core.__version__,
             "engine_running": is_running
         }

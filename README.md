@@ -1,4 +1,4 @@
-# IDM Linux ⚡
+# PV-IDM ⚡
 
 <p align="center">
   <b>A Feature-Complete, High-Performance Internet Download Manager (IDM) Clone for Linux</b><br>
@@ -18,7 +18,7 @@
 
 ## 🌟 Overview
 
-**IDM Linux** brings the beloved, high-speed downloading experience of Internet Download Manager to the Linux desktop. Engineered with a modular, lightweight Python core and native PyQt6 widgets, it features IDM's iconic dynamic segment re-allocation algorithm, seamless multi-browser integration, floating video grabber overlay, queue scheduler, and background daemon.
+**PV-IDM** brings the beloved, high-speed downloading experience of Internet Download Manager to the Linux desktop. Engineered with a modular, lightweight Python core and native PyQt6 widgets, it features IDM's iconic dynamic segment re-allocation algorithm, seamless multi-browser integration, floating video grabber overlay, queue scheduler, and background daemon.
 
 ```
 +-------------------------------------------------------------------------------+
@@ -34,7 +34,7 @@
 |                       idm-native-host (Native Messaging Host)                 |
 |             Translates browser JSON messages to Unix Domain Socket IPC        |
 +---------------------------------------+---------------------------------------+
-                                        | Unix Domain Socket (~/.config/idm-linux/idm.sock)
+                                        | Unix Domain Socket (~/.config/pv-idm/idm.sock)
                                         v
 +-------------------------------------------------------------------------------+
 |                          IDM Core Daemon / Service                            |
@@ -49,7 +49,7 @@
 |  |  * StorageManager (Sparse file allocation, chunk merging, checksums)    |  |
 |  |  * CategoryManager (Filetype rules: Compressed, Video, Music, Docs...)  |  |
 |  |  * Queue & Scheduler Manager (Periodic start/stop, max concurrent jobs) |  |
-|  |  * SQLite Database (~/.config/idm-linux/idm.db)                         |  |
+|  |  * SQLite Database (~/.config/pv-idm/idm.db)                             |  |
 |  +-------------------------------------------------------------------------+  |
 +-------------------+---------------------------------------+-------------------+
                     ^                                       ^
@@ -119,16 +119,16 @@ sudo dnf install python3 python3-pyqt6 ffmpeg
 Clone the repository and run the automated installer:
 
 ```bash
-git clone https://github.com/your-username/idm-linux.git
-cd idm-linux
+git clone https://github.com/your-username/pv-idm.git
+cd pv-idm
 
 # Run the installer script
 ./scripts/install.sh
 ```
 
 This will:
-1. Create executable symlinks in `~/.local/bin/idm` and `~/.local/bin/idm-gui`.
-2. Install desktop launcher to `~/.local/share/applications/idm-linux.desktop`.
+1. Create executable wrappers in `~/.local/bin/pv-idm` and `~/.local/bin/pv-idm-gui` (with `idm`/`idm-gui` symlink aliases).
+2. Install desktop launcher to `~/.local/share/applications/pv-idm.desktop`.
 3. Register Native Messaging Host manifests for all installed browsers.
 
 ---
@@ -138,11 +138,11 @@ This will:
 #### For Chromium Browsers (Google Chrome, Brave, Edge, Chromium, Vivaldi):
 1. Open your browser and navigate to `chrome://extensions/`.
 2. Enable **Developer mode** (toggle in upper-right corner).
-3. Click **Load unpacked** and select the `idm-linux/extension` directory.
+3. Click **Load unpacked** and select the `pv-idm/extension` directory.
 
 #### For Mozilla Firefox / Librewolf:
 1. Navigate to `about:debugging#/runtime/this-firefox`.
-2. Click **Load Temporary Add-on...** and select `idm-linux/extension/manifest.firefox.json` (or `manifest.json`).
+2. Click **Load Temporary Add-on...** and select `pv-idm/extension/manifest.firefox.json` (or `manifest.json`).
 
 ---
 
@@ -150,9 +150,9 @@ This will:
 
 ### Launch Desktop GUI
 ```bash
-idm-gui
+pv-idm-gui
 ```
-*(Or launch **IDM Linux** directly from your application launcher / desktop menu).*
+*(Or launch **PV-IDM** directly from your application launcher / desktop menu).*
 
 ---
 
@@ -201,9 +201,9 @@ idm status
 ## ⚙ Configuration & Storage Paths
 
 All persistent settings, state, and logs are stored according to XDG standards:
-- **Configuration & Database**: `~/.config/idm-linux/idm.db`
-- **IPC Socket**: `~/.config/idm-linux/idm.sock`
-- **Temporary Segments**: `~/.config/idm-linux/temp/`
+- **Configuration & Database**: `~/.config/pv-idm/idm.db`
+- **IPC Socket**: `~/.config/pv-idm/idm.sock`
+- **Temporary Segments**: `~/.config/pv-idm/temp/`
 - **Default Downloads**: `~/Downloads/` (subdivided into `Compressed`, `Documents`, `Music`, `Programs`, `Video`)
 
 ---

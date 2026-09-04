@@ -52,7 +52,7 @@ class MainWindow(QMainWindow):
         self.config = config or Config()
         self.engine = engine or DownloadEngine(self.config)
 
-        self.setWindowTitle("IDM Linux - Internet Download Manager")
+        self.setWindowTitle("PV-IDM - Internet Download Manager")
         self.setWindowFlags(Qt.WindowType.Window)
         self.resize(1020, 640)
         self.setStyleSheet(IDM_DARK_THEME)
@@ -177,7 +177,7 @@ class MainWindow(QMainWindow):
         help_browser_act = help_menu.addAction("Register &Browser Integration...")
         help_browser_act.triggered.connect(self._register_browser_integration)
         help_menu.addSeparator()
-        about_act = help_menu.addAction("&About IDM Linux")
+        about_act = help_menu.addAction("&About PV-IDM")
         about_act.triggered.connect(self._show_about)
 
     def _setup_toolbar(self):
@@ -545,8 +545,8 @@ class MainWindow(QMainWindow):
         import idm_core
         QMessageBox.about(
             self,
-            "About IDM Linux",
-            f"<h3>IDM Linux v{idm_core.__version__}</h3>"
+            "About PV-IDM",
+            f"<h3>PV-IDM v{idm_core.__version__}</h3>"
             "<p>Internet Download Manager clone for Linux desktop environments.</p>"
             "<p>Features dynamic multi-segment connection allocation, browser download interception, "
             "floating video sniffer, queue scheduler, and native IPC.</p>"

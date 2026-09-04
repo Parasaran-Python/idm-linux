@@ -8,50 +8,54 @@ ICON_DIR="${HOME}/.local/share/icons/hicolor/128x128/apps"
 PYTHON_BIN="${PYTHON_BIN:-/run/media/parasaran/Dev/SDK/python/install/bin/python3}"
 
 echo "========================================================"
-echo "          Installing IDM Linux Integration              "
+echo "          Installing PV-IDM Integration                 "
 echo "========================================================"
 
 mkdir -p "${BIN_DIR}" "${DESKTOP_DIR}" "${ICON_DIR}"
 
-# 1. Create CLI Wrapper (`idm`)
-cat << EOF > "${BIN_DIR}/idm"
+# 1. Create CLI Wrapper (`pv-idm` & `idm`)
+cat << EOF > "${BIN_DIR}/pv-idm"
 #!/bin/bash
 REPO_DIR="${REPO_DIR}"
 PYTHON_BIN="${PYTHON_BIN}"
 export PYTHONPATH="/usr/lib/python3/dist-packages:/usr/local/lib/python3.14/dist-packages:\${REPO_DIR}:\$PYTHONPATH"
 exec "\${PYTHON_BIN}" -m idm_cli.cli "\$@"
 EOF
-chmod +x "${BIN_DIR}/idm"
+chmod +x "${BIN_DIR}/pv-idm"
+ln -sf "${BIN_DIR}/pv-idm" "${BIN_DIR}/idm"
 
-# 2. Create GUI Wrapper (`idm-gui`)
-cat << EOF > "${BIN_DIR}/idm-gui"
+# 2. Create GUI Wrapper (`pv-idm-gui` & `idm-gui`)
+cat << EOF > "${BIN_DIR}/pv-idm-gui"
 #!/bin/bash
 REPO_DIR="${REPO_DIR}"
 PYTHON_BIN="${PYTHON_BIN}"
 export PYTHONPATH="/usr/lib/python3/dist-packages:/usr/local/lib/python3.14/dist-packages:\${REPO_DIR}:\$PYTHONPATH"
 exec "\${PYTHON_BIN}" -m idm_gui.app "\$@"
 EOF
-chmod +x "${BIN_DIR}/idm-gui"
+chmod +x "${BIN_DIR}/pv-idm-gui"
+ln -sf "${BIN_DIR}/pv-idm-gui" "${BIN_DIR}/idm-gui"
 
-# 3. Create Daemon Wrapper (`idm-daemon`)
-cat << EOF > "${BIN_DIR}/idm-daemon"
+# 3. Create Daemon Wrapper (`pv-idm-daemon` & `idm-daemon`)
+cat << EOF > "${BIN_DIR}/pv-idm-daemon"
 #!/bin/bash
 REPO_DIR="${REPO_DIR}"
 PYTHON_BIN="${PYTHON_BIN}"
 export PYTHONPATH="/usr/lib/python3/dist-packages:/usr/local/lib/python3.14/dist-packages:\${REPO_DIR}:\$PYTHONPATH"
 exec "\${PYTHON_BIN}" -m idm_ipc.daemon "\$@"
 EOF
-chmod +x "${BIN_DIR}/idm-daemon"
+chmod +x "${BIN_DIR}/pv-idm-daemon"
+ln -sf "${BIN_DIR}/pv-idm-daemon" "${BIN_DIR}/idm-daemon"
 
 # 4. Install Desktop File and Multi-Resolution Icons
 for sz in 16 32 48 128 256 512; do
     target_dir="${HOME}/.local/share/icons/hicolor/${sz}x${sz}/apps"
     mkdir -p "${target_dir}"
     if [ -f "${REPO_DIR}/extension/icons/icon${sz}.png" ]; then
+        cp "${REPO_DIR}/extension/icons/icon${sz}.png" "${target_dir}/pv-idm.png"
         cp "${REPO_DIR}/extension/icons/icon${sz}.png" "${target_dir}/idm-linux.png"
     fi
 done
-cp "${REPO_DIR}/scripts/idm-linux.desktop" "${DESKTOP_DIR}/idm-linux.desktop"
+cp "${REPO_DIR}/scripts/pv-idm.desktop" "${DESKTOP_DIR}/pv-idm.desktop"
 
 # 5. Register Browser Native Messaging Hosts
 echo "[*] Registering Browser Native Messaging Hosts..."
@@ -67,8 +71,8 @@ if command -v gtk-update-icon-cache >/dev/null 2>&1; then
 fi
 
 echo "========================================================"
-echo " [OK] IDM Linux Installed Successfully!"
-echo " Binaries: ${BIN_DIR}/idm, ${BIN_DIR}/idm-gui"
-echo " Desktop Launcher: ${DESKTOP_DIR}/idm-linux.desktop"
+echo " [OK] PV-IDM Installed Successfully!"
+echo " Binaries: ${BIN_DIR}/pv-idm, ${BIN_DIR}/pv-idm-gui"
+echo " Desktop Launcher: ${DESKTOP_DIR}/pv-idm.desktop"
 echo " Browser Extension Directory: ${REPO_DIR}/extension"
 echo "========================================================"

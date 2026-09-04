@@ -49,7 +49,7 @@ class IDMDaemon:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="IDM Linux Background Daemon")
+    parser = argparse.ArgumentParser(description="PV-IDM Background Daemon")
     parser.add_argument("--config-dir", help="Custom configuration directory")
     args = parser.parse_args()
 

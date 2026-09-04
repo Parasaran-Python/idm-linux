@@ -54,7 +54,7 @@ class TestCLI(unittest.TestCase):
 
         # Status
         mock_client.is_server_running.return_value = True
-        mock_client.ping.return_value = {"status": "ok", "version": "1.0.0", "app": "IDM Linux"}
+        mock_client.ping.return_value = {"status": "ok", "version": "1.0.0", "app": "PV-IDM"}
         ret = run_cli_command(parser.parse_args(["status"]), client=mock_client)
         self.assertEqual(ret, 0)
 
