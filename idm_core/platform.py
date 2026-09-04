@@ -179,12 +179,15 @@ def resolve_binary(base_name: str) -> Optional[str]:
 
     # 2. Next to running executable or script
     app_dir = os.path.dirname(os.path.abspath(sys.argv[0] if sys.argv else __file__))
-    candidate = os.path.join(app_dir, exe_name)
-    if os.path.isfile(candidate) and (is_windows() or os.access(candidate, os.X_OK)):
-        return candidate
-    candidate_bin = os.path.join(app_dir, "bin", exe_name)
-    if os.path.isfile(candidate_bin) and (is_windows() or os.access(candidate_bin, os.X_OK)):
-        return candidate_bin
+    candidates = [
+        os.path.join(app_dir, exe_name),
+        os.path.join(app_dir, "bin", exe_name),
+        os.path.join(app_dir, "_internal", "bin", exe_name),
+        os.path.join(app_dir, "..", "bin", exe_name),
+    ]
+    for c in candidates:
+        if os.path.isfile(c) and (is_windows() or os.access(c, os.X_OK)):
+            return c
 
     # 3. Look in system PATH
     found = shutil.which(exe_name) or shutil.which(base_name)
@@ -577,10 +580,11 @@ def resolve_native_host_binary(explicit_path: Optional[str] = None, repo_root: O
     return None
 
 
-def is_native_messaging_host_registered() -> bool:
+def is_native_messaging_host_registered(expected_binary: Optional[str] = None) -> bool:
     """
     Check if the native messaging host is registered in the OS for standard browsers.
     Returns True if valid registration exists and points to an existing host binary.
+    If expected_binary is specified, also validates that the registered binary matches expected_binary.
     """
     if is_windows():
         try:
@@ -600,6 +604,9 @@ def is_native_messaging_host_registered() -> bool:
                                 data = json.load(f)
                             host_bin = data.get("path", "")
                             if host_bin and os.path.exists(host_bin):
+                                if expected_binary:
+                                    if os.path.normcase(os.path.abspath(host_bin)) != os.path.normcase(os.path.abspath(expected_binary)):
+                                        return False
                                 return True
                 except Exception:
                     continue
@@ -620,6 +627,9 @@ def is_native_messaging_host_registered() -> bool:
                         data = json.load(f)
                     host_bin = data.get("path", "")
                     if host_bin and os.path.exists(host_bin):
+                        if expected_binary:
+                            if os.path.normcase(os.path.abspath(host_bin)) != os.path.normcase(os.path.abspath(expected_binary)):
+                                return False
                         return True
                 except Exception:
                     pass

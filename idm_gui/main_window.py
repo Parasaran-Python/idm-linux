@@ -556,8 +556,9 @@ class MainWindow(QMainWindow):
     def _register_browser_integration(self):
         """Install or register native messaging host for Chrome/Firefox browsers."""
         try:
-            from idm_core.platform import register_native_messaging_host
-            res = register_native_messaging_host()
+            from idm_core.platform import register_native_messaging_host, resolve_native_host_binary
+            current_host = resolve_native_host_binary()
+            res = register_native_messaging_host(binary_path=current_host)
             targets_str = "\n".join(f" - {t}" for t in res.get("targets", []))
             manifest = res.get("manifest_path", "Manifest created")
             QMessageBox.information(

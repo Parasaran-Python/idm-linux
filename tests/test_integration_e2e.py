@@ -128,6 +128,10 @@ class TestE2EIntegration(unittest.TestCase):
 
         self.assertTrue(completed, "Download did not complete in E2E test")
         self.assertIsNotNone(save_path)
+        for _ in range(20):
+            if os.path.exists(save_path):
+                break
+            time.sleep(0.05)
         self.assertTrue(os.path.exists(save_path))
 
         # 3. Verify SHA-256 Checksum against upstream raw data
