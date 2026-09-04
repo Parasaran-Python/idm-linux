@@ -615,11 +615,18 @@ def is_native_messaging_host_registered(expected_binary: Optional[str] = None) -
             return False
     else:
         home = os.path.expanduser("~")
-        candidate_manifests = [
-            os.path.join(home, ".config", "google-chrome", "NativeMessagingHosts", f"{NATIVE_HOST_NAME}.json"),
-            os.path.join(home, ".config", "chromium", "NativeMessagingHosts", f"{NATIVE_HOST_NAME}.json"),
-            os.path.join(home, ".mozilla", "native-messaging-hosts", f"{NATIVE_HOST_NAME}.json"),
-        ]
+        if is_macos():
+            candidate_manifests = [
+                os.path.join(home, "Library", "Application Support", "Google", "Chrome", "NativeMessagingHosts", f"{NATIVE_HOST_NAME}.json"),
+                os.path.join(home, "Library", "Application Support", "Chromium", "NativeMessagingHosts", f"{NATIVE_HOST_NAME}.json"),
+                os.path.join(home, "Library", "Application Support", "Mozilla", "NativeMessagingHosts", f"{NATIVE_HOST_NAME}.json"),
+            ]
+        else:
+            candidate_manifests = [
+                os.path.join(home, ".config", "google-chrome", "NativeMessagingHosts", f"{NATIVE_HOST_NAME}.json"),
+                os.path.join(home, ".config", "chromium", "NativeMessagingHosts", f"{NATIVE_HOST_NAME}.json"),
+                os.path.join(home, ".mozilla", "native-messaging-hosts", f"{NATIVE_HOST_NAME}.json"),
+            ]
         for cm in candidate_manifests:
             if os.path.isfile(cm):
                 try:
@@ -741,8 +748,9 @@ set "PYTHONPATH={root};%PYTHONPATH%"
         # Linux / POSIX shell wrapper
         host_path = os.path.join(root, "scripts", "idm-native-host-wrapper.sh")
         py_exec = sys.executable or "/usr/bin/python3"
+        py_ver = f"python{sys.version_info.major}.{sys.version_info.minor}"
         script_content = f"""#!/bin/bash
-export PYTHONPATH="/usr/lib/python3/dist-packages:/usr/local/lib/python3.14/dist-packages:{root}:$PYTHONPATH"
+export PYTHONPATH="/usr/lib/python3/dist-packages:/usr/local/lib/{py_ver}/dist-packages:/usr/local/lib/python3/dist-packages:{root}:$PYTHONPATH"
 exec "{py_exec}" -m idm_native_host.host "$@"
 """
         os.makedirs(os.path.dirname(os.path.abspath(host_path)), exist_ok=True)
@@ -833,18 +841,29 @@ exec "{py_exec}" -m idm_native_host.host "$@"
     else:
         target_names = []
         home = os.path.expanduser("~")
-        chromium_targets = [
-            os.path.join(home, ".config", "google-chrome", "NativeMessagingHosts"),
-            os.path.join(home, ".config", "chromium", "NativeMessagingHosts"),
-            os.path.join(home, ".config", "BraveSoftware", "Brave-Browser", "NativeMessagingHosts"),
-            os.path.join(home, ".config", "microsoft-edge", "NativeMessagingHosts"),
-            os.path.join(home, ".config", "opera", "NativeMessagingHosts"),
-            os.path.join(home, ".config", "vivaldi", "NativeMessagingHosts"),
-        ]
-        firefox_targets = [
-            os.path.join(home, ".mozilla", "native-messaging-hosts"),
-            os.path.join(home, ".librewolf", "native-messaging-hosts"),
-        ]
+        if is_macos():
+            chromium_targets = [
+                os.path.join(home, "Library", "Application Support", "Google", "Chrome", "NativeMessagingHosts"),
+                os.path.join(home, "Library", "Application Support", "Chromium", "NativeMessagingHosts"),
+                os.path.join(home, "Library", "Application Support", "BraveSoftware", "Brave-Browser", "NativeMessagingHosts"),
+                os.path.join(home, "Library", "Application Support", "Microsoft Edge", "NativeMessagingHosts"),
+            ]
+            firefox_targets = [
+                os.path.join(home, "Library", "Application Support", "Mozilla", "NativeMessagingHosts"),
+            ]
+        else:
+            chromium_targets = [
+                os.path.join(home, ".config", "google-chrome", "NativeMessagingHosts"),
+                os.path.join(home, ".config", "chromium", "NativeMessagingHosts"),
+                os.path.join(home, ".config", "BraveSoftware", "Brave-Browser", "NativeMessagingHosts"),
+                os.path.join(home, ".config", "microsoft-edge", "NativeMessagingHosts"),
+                os.path.join(home, ".config", "opera", "NativeMessagingHosts"),
+                os.path.join(home, ".config", "vivaldi", "NativeMessagingHosts"),
+            ]
+            firefox_targets = [
+                os.path.join(home, ".mozilla", "native-messaging-hosts"),
+                os.path.join(home, ".librewolf", "native-messaging-hosts"),
+            ]
 
         for target_dir in chromium_targets:
             try:
@@ -895,16 +914,25 @@ def unregister_native_messaging_host() -> UnregistrationResult:
             pass
     else:
         home = os.path.expanduser("~")
-        dirs = [
-            os.path.join(home, ".config", "google-chrome", "NativeMessagingHosts"),
-            os.path.join(home, ".config", "chromium", "NativeMessagingHosts"),
-            os.path.join(home, ".config", "BraveSoftware", "Brave-Browser", "NativeMessagingHosts"),
-            os.path.join(home, ".config", "microsoft-edge", "NativeMessagingHosts"),
-            os.path.join(home, ".config", "opera", "NativeMessagingHosts"),
-            os.path.join(home, ".config", "vivaldi", "NativeMessagingHosts"),
-            os.path.join(home, ".mozilla", "native-messaging-hosts"),
-            os.path.join(home, ".librewolf", "native-messaging-hosts"),
-        ]
+        if is_macos():
+            dirs = [
+                os.path.join(home, "Library", "Application Support", "Google", "Chrome", "NativeMessagingHosts"),
+                os.path.join(home, "Library", "Application Support", "Chromium", "NativeMessagingHosts"),
+                os.path.join(home, "Library", "Application Support", "BraveSoftware", "Brave-Browser", "NativeMessagingHosts"),
+                os.path.join(home, "Library", "Application Support", "Microsoft Edge", "NativeMessagingHosts"),
+                os.path.join(home, "Library", "Application Support", "Mozilla", "NativeMessagingHosts"),
+            ]
+        else:
+            dirs = [
+                os.path.join(home, ".config", "google-chrome", "NativeMessagingHosts"),
+                os.path.join(home, ".config", "chromium", "NativeMessagingHosts"),
+                os.path.join(home, ".config", "BraveSoftware", "Brave-Browser", "NativeMessagingHosts"),
+                os.path.join(home, ".config", "microsoft-edge", "NativeMessagingHosts"),
+                os.path.join(home, ".config", "opera", "NativeMessagingHosts"),
+                os.path.join(home, ".config", "vivaldi", "NativeMessagingHosts"),
+                os.path.join(home, ".mozilla", "native-messaging-hosts"),
+                os.path.join(home, ".librewolf", "native-messaging-hosts"),
+            ]
         for d in dirs:
             mf = os.path.join(d, f"{NATIVE_HOST_NAME}.json")
             if os.path.exists(mf):
