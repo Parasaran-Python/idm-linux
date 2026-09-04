@@ -626,15 +626,72 @@ def is_native_messaging_host_registered() -> bool:
         return False
 
 
+class RegistrationResult(tuple):
+    """Result of registering native messaging host, supporting tuple unpacking, bool check, and dict/attribute access."""
+    def __new__(cls, success: bool, count: int, host_path: str, targets: Optional[List[str]] = None):
+        return super().__new__(cls, (success, count, host_path))
+
+    def __init__(self, success: bool, count: int, host_path: str, targets: Optional[List[str]] = None):
+        self.success = bool(success)
+        self.count = count
+        self.host_path = host_path
+        self.manifest_path = host_path
+        self.targets = targets or [f"{count} browser locations configured"]
+
+    def __bool__(self):
+        return self.success
+
+    def get(self, key, default=None):
+        if key in ("status", "success"):
+            return "ok" if self.success else "error"
+        elif key == "count":
+            return self.count
+        elif key in ("manifest_path", "host_path"):
+            return self.manifest_path
+        elif key == "targets":
+            return self.targets
+        return default
+
+
+class UnregistrationResult(tuple):
+    """Result of unregistering native messaging host, supporting tuple unpacking, bool check, and dict/attribute access."""
+    def __new__(cls, removed: bool, count: int = 0, targets: Optional[List[str]] = None):
+        return super().__new__(cls, (removed, count))
+
+    def __init__(self, removed: bool, count: int = 0, targets: Optional[List[str]] = None):
+        self.removed = bool(removed)
+        self.count = count
+        self.targets = targets or ([f"{count} locations"] if count else [])
+
+    def __bool__(self):
+        return self.removed
+
+    def get(self, key, default=None):
+        if key in ("status", "success", "removed"):
+            return self.removed
+        elif key == "count":
+            return self.count
+        elif key == "targets":
+            return self.targets
+        return default
+
+
 def register_native_messaging_host(
     binary_path: Optional[str] = None,
     custom_chrome_ids: Optional[List[str]] = None,
+    additional_chrome_ids: Optional[List[str]] = None,
     repo_root: Optional[str] = None
-) -> Tuple[bool, int, str]:
+) -> RegistrationResult:
     """
     Install and register native messaging host manifests for Chrome, Edge, Brave, and Firefox.
-    Returns (success, installed_locations_count, resolved_host_path).
+    Returns RegistrationResult which can be unpacked as (success, count, host_path) or accessed like a dict.
     """
+    chrome_ids_list: List[str] = []
+    if custom_chrome_ids:
+        chrome_ids_list.extend(custom_chrome_ids)
+    if additional_chrome_ids:
+        chrome_ids_list.extend(additional_chrome_ids)
+
     root = repo_root or os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     resolved_binary = resolve_native_host_binary(binary_path, root)
 
@@ -689,8 +746,8 @@ exec "{py_exec}" -m idm_native_host.host "$@"
 
     # Collect Chrome / Chromium extension IDs
     chrome_ids = get_default_chrome_extension_ids(root)
-    if custom_chrome_ids:
-        for cid in custom_chrome_ids:
+    if chrome_ids_list:
+        for cid in chrome_ids_list:
             clean_id = (cid or "").strip()
             if clean_id and clean_id not in chrome_ids:
                 chrome_ids.append(clean_id)
@@ -736,17 +793,19 @@ exec "{py_exec}" -m idm_native_host.host "$@"
             with open(firefox_manifest_file, "w", encoding="utf-8") as f:
                 json.dump(firefox_manifest, f, indent=2)
 
+            target_names = []
             reg_paths_chrome = [
-                r"Software\Google\Chrome\NativeMessagingHosts",
-                r"Software\Microsoft\Edge\NativeMessagingHosts",
-                r"Software\BraveSoftware\Brave-Browser\NativeMessagingHosts",
+                ("Google Chrome", r"Software\Google\Chrome\NativeMessagingHosts"),
+                ("Microsoft Edge", r"Software\Microsoft\Edge\NativeMessagingHosts"),
+                ("Brave Browser", r"Software\BraveSoftware\Brave-Browser\NativeMessagingHosts"),
             ]
-            for rp in reg_paths_chrome:
+            for browser_name, rp in reg_paths_chrome:
                 try:
                     full_key = f"{rp}\\{NATIVE_HOST_NAME}"
                     with winreg.CreateKey(winreg.HKEY_CURRENT_USER, full_key) as k:
                         winreg.SetValueEx(k, "", 0, winreg.REG_SZ, chrome_manifest_file)
                     installed_count += 1
+                    target_names.append(f"{browser_name} (HKCU)")
                 except Exception:
                     pass
 
@@ -755,12 +814,14 @@ exec "{py_exec}" -m idm_native_host.host "$@"
                 with winreg.CreateKey(winreg.HKEY_CURRENT_USER, ff_key) as k:
                     winreg.SetValueEx(k, "", 0, winreg.REG_SZ, firefox_manifest_file)
                 installed_count += 1
+                target_names.append("Mozilla Firefox (HKCU)")
             except Exception:
                 pass
 
         except Exception:
             pass
     else:
+        target_names = []
         home = os.path.expanduser("~")
         chromium_targets = [
             os.path.join(home, ".config", "google-chrome", "NativeMessagingHosts"),
@@ -782,6 +843,7 @@ exec "{py_exec}" -m idm_native_host.host "$@"
                 with open(manifest_file, "w", encoding="utf-8") as f:
                     json.dump(chrome_manifest, f, indent=2)
                 installed_count += 1
+                target_names.append(manifest_file)
             except Exception:
                 pass
 
@@ -792,28 +854,31 @@ exec "{py_exec}" -m idm_native_host.host "$@"
                 with open(manifest_file, "w", encoding="utf-8") as f:
                     json.dump(firefox_manifest, f, indent=2)
                 installed_count += 1
+                target_names.append(manifest_file)
             except Exception:
                 pass
 
-    return installed_count > 0, installed_count, host_path
+    return RegistrationResult(installed_count > 0, installed_count, host_path, targets=target_names)
 
 
-def unregister_native_messaging_host() -> bool:
+def unregister_native_messaging_host() -> UnregistrationResult:
     """Unregister and clean up native messaging host manifests and registry keys."""
     removed = False
+    removed_targets = []
     if is_windows():
         try:
             import winreg
             reg_paths = [
-                r"Software\Google\Chrome\NativeMessagingHosts",
-                r"Software\Microsoft\Edge\NativeMessagingHosts",
-                r"Software\BraveSoftware\Brave-Browser\NativeMessagingHosts",
-                r"Software\Mozilla\NativeMessagingHosts",
+                ("Google Chrome", r"Software\Google\Chrome\NativeMessagingHosts"),
+                ("Microsoft Edge", r"Software\Microsoft\Edge\NativeMessagingHosts"),
+                ("Brave Browser", r"Software\BraveSoftware\Brave-Browser\NativeMessagingHosts"),
+                ("Mozilla Firefox", r"Software\Mozilla\NativeMessagingHosts"),
             ]
-            for rp in reg_paths:
+            for browser_name, rp in reg_paths:
                 try:
                     winreg.DeleteKey(winreg.HKEY_CURRENT_USER, f"{rp}\\{NATIVE_HOST_NAME}")
                     removed = True
+                    removed_targets.append(f"{browser_name} (HKCU)")
                 except Exception:
                     pass
         except Exception:
@@ -836,6 +901,7 @@ def unregister_native_messaging_host() -> bool:
                 try:
                     os.remove(mf)
                     removed = True
+                    removed_targets.append(mf)
                 except Exception:
                     pass
-    return removed
+    return UnregistrationResult(removed, count=len(removed_targets), targets=removed_targets)

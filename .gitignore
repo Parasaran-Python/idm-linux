@@ -12,3 +12,4 @@ build/
 temp/
 .playwright-mcp/
 scripts/idm-native-host-wrapper.sh
+bin/
