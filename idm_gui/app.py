@@ -12,7 +12,13 @@ from PyQt6.QtGui import QIcon, QPixmap
 from PyQt6.QtWidgets import QApplication
 from idm_core.config import Config
 from idm_core.engine import DownloadEngine
-from idm_core.platform import is_linux, setup_windows_app_id
+from idm_core.platform import (
+    is_linux,
+    setup_windows_app_id,
+    is_native_messaging_host_registered,
+    register_native_messaging_host,
+    resolve_native_host_binary,
+)
 from idm_gui.main_window import MainWindow
 from idm_gui.styles import IDM_DARK_THEME
 from idm_gui.tray import IDMTrayIcon, create_tray_icon_pixmap, create_app_icon
@@ -74,6 +80,15 @@ def main():
 
     # Configure Windows App ID for taskbar grouping & notifications
     setup_windows_app_id()
+
+    # Auto-register native messaging host for browser integration on Windows if missing or moved
+    if sys.platform == "win32":
+        try:
+            current_host = resolve_native_host_binary()
+            if not is_native_messaging_host_registered(expected_binary=current_host):
+                register_native_messaging_host(binary_path=current_host)
+        except Exception as e:
+            print(f"[IDM] Note: Auto-registering native messaging host failed: {e}", file=sys.stderr)
 
     # Enable native window decorations & titlebar controls on Linux
     if is_linux():

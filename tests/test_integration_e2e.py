@@ -93,7 +93,7 @@ class TestE2EIntegration(unittest.TestCase):
     def tearDown(self):
         self.ipc_server.stop()
         self.engine.shutdown()
-        shutil.rmtree(self.test_dir)
+        shutil.rmtree(self.test_dir, ignore_errors=True)
 
     def test_full_e2e_pipeline(self):
         # 1. Simulate browser native messaging interception
@@ -128,6 +128,10 @@ class TestE2EIntegration(unittest.TestCase):
 
         self.assertTrue(completed, "Download did not complete in E2E test")
         self.assertIsNotNone(save_path)
+        for _ in range(20):
+            if os.path.exists(save_path):
+                break
+            time.sleep(0.05)
         self.assertTrue(os.path.exists(save_path))
 
         # 3. Verify SHA-256 Checksum against upstream raw data

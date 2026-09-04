@@ -5,6 +5,7 @@ IDM Linux Browser Native Messaging Host (Chrome / Firefox Stdio Bridge)
 
 import json
 import os
+import shutil
 import struct
 import subprocess
 import sys
@@ -48,7 +49,7 @@ def ensure_idm_running(client: IPCClient) -> bool:
     env = os.environ.copy()
     repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     py_path = env.get("PYTHONPATH", "")
-    env["PYTHONPATH"] = f"{repo_root}:{py_path}".strip(":")
+    env["PYTHONPATH"] = f"{repo_root}{os.pathsep}{py_path}".strip(os.pathsep)
 
     popen_kwargs: Dict[str, Any] = {
         "env": env,
@@ -75,6 +76,49 @@ def ensure_idm_running(client: IPCClient) -> bool:
             if os.path.exists(xauth):
                 env.setdefault("XAUTHORITY", xauth)
 
+    is_frozen = getattr(sys, "frozen", False)
+    exe_dir = os.path.dirname(os.path.abspath(sys.executable))
+
+    # If frozen (standalone build, e.g. PyInstaller), look for sibling binaries first
+    if is_frozen:
+        candidate_gui_names = ["idm-gui.exe", "idm-gui"] if sys.platform == "win32" else ["idm-gui"]
+        candidate_daemon_names = ["idm-daemon.exe", "idm-daemon"] if sys.platform == "win32" else ["idm-daemon"]
+
+        candidate_gui_paths = [os.path.join(exe_dir, name) for name in candidate_gui_names]
+        candidate_gui_paths.extend([shutil.which(name) for name in candidate_gui_names if shutil.which(name)])
+        if sys.platform != "win32":
+            candidate_gui_paths.append(os.path.expanduser("~/.local/bin/idm-gui"))
+
+        for gui_path in candidate_gui_paths:
+            if gui_path and os.path.exists(gui_path):
+                try:
+                    subprocess.Popen([gui_path, "--minimized"], **popen_kwargs)
+                    for _ in range(20):
+                        time.sleep(0.15)
+                        if client.is_server_running():
+                            return True
+                    break
+                except Exception:
+                    pass
+
+        # Fallback to standalone daemon
+        for daemon_name in candidate_daemon_names:
+            daemon_path = os.path.join(exe_dir, daemon_name)
+            if not os.path.exists(daemon_path):
+                daemon_path = shutil.which(daemon_name)
+            if daemon_path and os.path.exists(daemon_path):
+                try:
+                    subprocess.Popen([daemon_path], **popen_kwargs)
+                    for _ in range(15):
+                        time.sleep(0.15)
+                        if client.is_server_running():
+                            return True
+                    break
+                except Exception:
+                    pass
+
+        return False
+
     # 1. Try launching GUI app via python module
     try:
         cmd = [sys.executable, "-m", "idm_gui.app", "--minimized"]
@@ -87,10 +131,14 @@ def ensure_idm_running(client: IPCClient) -> bool:
         pass
 
     # 2. Fallback to installed idm-gui binary if present
-    installed_gui = os.path.expanduser("~/.local/bin/idm-gui")
-    if os.path.exists(installed_gui):
+    candidate_gui = (
+        shutil.which("idm-gui.exe") or shutil.which("idm-gui")
+        if sys.platform == "win32"
+        else (shutil.which("idm-gui") or os.path.expanduser("~/.local/bin/idm-gui"))
+    )
+    if candidate_gui and os.path.exists(candidate_gui):
         try:
-            subprocess.Popen([installed_gui, "--minimized"], **popen_kwargs)
+            subprocess.Popen([candidate_gui, "--minimized"], **popen_kwargs)
             for _ in range(15):
                 time.sleep(0.15)
                 if client.is_server_running():
@@ -132,9 +180,9 @@ def handle_browser_message(msg: Dict[str, Any], ipc_client: Optional[IPCClient] 
     # Forward to IDM IPC
     if action in ["open_gui", "show_gui"]:
         return client.send_request({"action": "show_gui"})
-    elif action in ["add_download", "intercept", "download_video"]:
+    elif action in ["add_download", "intercept", "download_video", "download", "download_url"]:
         forward_payload = dict(msg)
-        if action in ["intercept", "download_video"]:
+        if action in ["intercept", "download_video", "download", "download_url"]:
             forward_payload["action"] = "add_download"
         return client.send_request(forward_payload)
     else:

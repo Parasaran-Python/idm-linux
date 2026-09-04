@@ -3,6 +3,7 @@ Unit Tests for YTDLPDownloader & Video Platform Detection
 """
 
 import unittest
+import unittest.mock
 from idm_core.ytdlp_downloader import YTDLPDownloader
 
 
@@ -235,7 +236,8 @@ class TestYTDLPDownloader(unittest.TestCase):
             "filesize": 55000000,
             "duration": 120
         }
-        with unittest.mock.patch.object(YTDLPDownloader, "probe_media_info", return_value=sample_info):
+        with unittest.mock.patch.object(YTDLPDownloader, "is_ytdlp_available", return_value=True), \
+             unittest.mock.patch.object(YTDLPDownloader, "probe_media_info", return_value=sample_info):
             downloader._resolve_initial_size_if_needed()
             self.assertEqual(downloader.total_bytes, 55000000)
 

@@ -5,248 +5,77 @@ Registers native messaging manifests for Chrome, Chromium, Brave, Edge, Opera, V
 """
 
 import argparse
-import base64
-import hashlib
-import json
 import os
-import shutil
-import stat
 import sys
 from typing import List, Optional
 
-HOST_NAME = "com.idm.linux.native_host"
+# Ensure repository root is on sys.path so idm_core is importable
+_script_dir = os.path.dirname(os.path.abspath(__file__))
+_repo_root = os.path.dirname(_script_dir)
+if _repo_root not in sys.path:
+    sys.path.insert(0, _repo_root)
+
+from idm_core.platform import (
+    NATIVE_HOST_NAME as HOST_NAME,
+    derive_chrome_extension_id,
+    get_default_chrome_extension_ids,
+    is_native_messaging_host_registered,
+    register_native_messaging_host,
+    resolve_native_host_binary,
+    unregister_native_messaging_host,
+)
 
 
 def get_repo_root() -> str:
     return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
-def derive_chrome_extension_id(key_b64: str) -> str:
-    """Compute 32-character Chrome extension ID from public key DER base64."""
-    try:
-        der = base64.b64decode(key_b64)
-        sha = hashlib.sha256(der).digest()
-        return "".join(chr(ord("a") + (b >> 4)) + chr(ord("a") + (b & 0x0F)) for b in sha[:16])
-    except Exception:
-        return ""
+def create_wrapper_script(repo_root: Optional[str] = None, binary_path: Optional[str] = None) -> str:
+    """Resolve native host binary or create executable wrapper."""
+    root = repo_root or get_repo_root()
+    resolved = resolve_native_host_binary(binary_path, root)
+    if resolved:
+        return resolved
+
+    _, _, host_path = register_native_messaging_host(binary_path=binary_path, repo_root=root)
+    return host_path
 
 
-def get_default_chrome_extension_ids(repo_root: str) -> List[str]:
-    """Extract standard extension IDs from manifest.json and defaults."""
-    ids = set()
-    manifest_path = os.path.join(repo_root, "extension", "manifest.json")
-    if os.path.exists(manifest_path):
-        try:
-            with open(manifest_path, "r", encoding="utf-8") as f:
-                data = json.load(f)
-                key = data.get("key")
-                if key:
-                    derived_id = derive_chrome_extension_id(key)
-                    if derived_id:
-                        ids.add(derived_id)
-        except Exception:
-            pass
+def install_manifests(
+    custom_chrome_ids: Optional[List[str]] = None,
+    binary_path: Optional[str] = None,
+    repo_root: Optional[str] = None
+) -> bool:
+    """Install native messaging host manifests into browser locations."""
+    root = repo_root or get_repo_root()
+    success, count, host_path = register_native_messaging_host(
+        binary_path=binary_path,
+        custom_chrome_ids=custom_chrome_ids,
+        repo_root=root
+    )
 
-    # Ensure known fixed ID is present
-    if not ids:
-        ids.add("cacfhfpjipjnanbefddajafhgpmpibej")
-    return sorted(list(ids))
-
-
-def create_wrapper_script(repo_root: str) -> str:
-    """Create executable shell wrapper or batch wrapper ensuring correct Python interpreter and PYTHONPATH."""
-    py_exec = sys.executable or ("python.exe" if sys.platform == "win32" else "/usr/bin/python3")
-    if sys.platform == "win32" and py_exec.lower().endswith("pythonw.exe"):
-        py_exec = py_exec[:-10] + "python.exe"
-
-    if sys.platform == "win32":
-        # 1. Check for installed or bundled idm-native-host.exe
-        app_dir = os.path.dirname(os.path.abspath(py_exec))
-        candidates = [
-            os.path.join(app_dir, "idm-native-host.exe"),
-            os.path.join(app_dir, "Scripts", "idm-native-host.exe"),
-            os.path.join(repo_root, "dist", "idm-linux", "idm-native-host.exe"),
-            os.path.join(repo_root, "idm-native-host.exe"),
-        ]
-        for c in candidates:
-            if os.path.exists(c):
-                return os.path.abspath(c)
-
-        which_exe = shutil.which("idm-native-host.exe")
-        if which_exe:
-            return os.path.abspath(which_exe)
-
-        # 2. Write permanent wrapper batch script to user AppData
-        base_dir = os.environ.get("LOCALAPPDATA") or os.environ.get("APPDATA") or os.path.expanduser("~")
-        native_dir = os.path.join(base_dir, "idm-linux", "native-messaging-hosts")
-        os.makedirs(native_dir, exist_ok=True)
-        wrapper_path = os.path.join(native_dir, "idm-native-host-wrapper.bat")
-        script_content = f"""@echo off
-setlocal
-where idm-native-host.exe >nul 2>nul
-if %ERRORLEVEL% equ 0 (
-    idm-native-host.exe %*
-    exit /b %ERRORLEVEL%
-)
-if exist "%~dp0idm-native-host.exe" (
-    "%~dp0idm-native-host.exe" %*
-    exit /b %ERRORLEVEL%
-)
-if exist "%~dp0..\\idm-native-host.exe" (
-    "%~dp0..\\idm-native-host.exe" %*
-    exit /b %ERRORLEVEL%
-)
-set "PYTHONPATH={repo_root};%PYTHONPATH%"
-"{py_exec}" -m idm_native_host.host %*
-"""
-        with open(wrapper_path, "w", encoding="utf-8") as f:
-            f.write(script_content)
-        return wrapper_path
-
-    wrapper_path = os.path.join(repo_root, "scripts", "idm-native-host-wrapper.sh")
-    script_content = f"""#!/bin/bash
-export PYTHONPATH="/usr/lib/python3/dist-packages:/usr/local/lib/python3.14/dist-packages:{repo_root}:$PYTHONPATH"
-exec "{py_exec}" -m idm_native_host.host "$@"
-"""
-    with open(wrapper_path, "w", encoding="utf-8") as f:
-        f.write(script_content)
-
-    st = os.stat(wrapper_path)
-    os.chmod(wrapper_path, st.st_mode | stat.S_IEXEC | stat.S_IXGRP | stat.S_IXOTH)
-    return wrapper_path
-
-
-def install_manifests(custom_chrome_ids: Optional[List[str]] = None):
-    repo_root = get_repo_root()
-    wrapper_path = create_wrapper_script(repo_root)
-    home = os.path.expanduser("~")
-
-    chrome_ids = get_default_chrome_extension_ids(repo_root)
+    chrome_ids = get_default_chrome_extension_ids(root)
     if custom_chrome_ids:
         for cid in custom_chrome_ids:
-            clean_id = cid.strip()
+            clean_id = (cid or "").strip()
             if clean_id and clean_id not in chrome_ids:
                 chrome_ids.append(clean_id)
-
-    env_id = os.environ.get("IDM_CHROME_EXTENSION_ID")
-    if env_id and env_id.strip() not in chrome_ids:
-        chrome_ids.append(env_id.strip())
-
-    # Build allowed_origins for Chromium (must be exact: chrome-extension://<id>/)
     allowed_origins = [f"chrome-extension://{cid}/" for cid in chrome_ids]
 
-    # Chromium manifest
-    chrome_manifest = {
-        "name": HOST_NAME,
-        "description": "IDM Linux Browser Integration Native Messaging Host",
-        "path": wrapper_path,
-        "type": "stdio",
-        "allowed_origins": allowed_origins
-    }
-
-    # Firefox manifest
-    firefox_manifest = {
-        "name": HOST_NAME,
-        "description": "IDM Linux Browser Integration Native Messaging Host",
-        "path": wrapper_path,
-        "type": "stdio",
-        "allowed_extensions": [
-            "idm-linux@idm-linux.local"
-        ]
-    }
-
-    installed_count = 0
-
-    # Windows: Register manifests via Windows Registry (HKCU\Software\...\NativeMessagingHosts)
-    if sys.platform == "win32":
-        try:
-            import winreg
-
-            base_dir = os.environ.get("LOCALAPPDATA") or os.environ.get("APPDATA") or os.path.expanduser("~")
-            manifests_dir = os.path.join(base_dir, "idm-linux", "native-messaging-hosts")
-            os.makedirs(manifests_dir, exist_ok=True)
-
-            chrome_manifest_file = os.path.join(manifests_dir, f"{HOST_NAME}.json")
-            firefox_manifest_file = os.path.join(manifests_dir, f"{HOST_NAME}.firefox.json")
-
-            with open(chrome_manifest_file, "w", encoding="utf-8") as f:
-                json.dump(chrome_manifest, f, indent=2)
-            with open(firefox_manifest_file, "w", encoding="utf-8") as f:
-                json.dump(firefox_manifest, f, indent=2)
-
-            reg_paths_chrome = [
-                r"Software\Google\Chrome\NativeMessagingHosts",
-                r"Software\Microsoft\Edge\NativeMessagingHosts",
-                r"Software\BraveSoftware\Brave-Browser\NativeMessagingHosts",
-            ]
-
-            for rp in reg_paths_chrome:
-                try:
-                    full_key = f"{rp}\\{HOST_NAME}"
-                    with winreg.CreateKey(winreg.HKEY_CURRENT_USER, full_key) as k:
-                        winreg.SetValueEx(k, "", 0, winreg.REG_SZ, chrome_manifest_file)
-                    print(f"[OK] Registered Windows Registry key: HKCU\\{full_key}")
-                    installed_count += 1
-                except Exception as e:
-                    print(f"[SKIP] Failed to register HKCU\\{rp}: {e}")
-
-            # Firefox
-            try:
-                ff_key = f"Software\\Mozilla\\NativeMessagingHosts\\{HOST_NAME}"
-                with winreg.CreateKey(winreg.HKEY_CURRENT_USER, ff_key) as k:
-                    winreg.SetValueEx(k, "", 0, winreg.REG_SZ, firefox_manifest_file)
-                print(f"[OK] Registered Windows Registry key: HKCU\\{ff_key}")
-                installed_count += 1
-            except Exception as e:
-                print(f"[SKIP] Failed to register Firefox HKCU\\{ff_key}: {e}")
-
-        except Exception as e:
-            print(f"[ERROR] Windows registry registration failed: {e}")
-
+    if success:
+        print(f"\nSuccessfully installed IDM Native Messaging Host to {count} browser locations.")
+        print(f"Host binary wrapper: {host_path}")
+        print(f"Allowed Chrome origins: {allowed_origins}")
+        print("Allowed Firefox extensions: ['idm-linux@idm-linux.local']")
     else:
-        # Linux / POSIX filesystem directories
-        chromium_targets = [
-            os.path.join(home, ".config", "google-chrome", "NativeMessagingHosts"),
-            os.path.join(home, ".config", "chromium", "NativeMessagingHosts"),
-            os.path.join(home, ".config", "BraveSoftware", "Brave-Browser", "NativeMessagingHosts"),
-            os.path.join(home, ".config", "microsoft-edge", "NativeMessagingHosts"),
-            os.path.join(home, ".config", "opera", "NativeMessagingHosts"),
-            os.path.join(home, ".config", "vivaldi", "NativeMessagingHosts"),
-        ]
+        print("\n[WARNING] Failed to register native messaging host manifests.")
+    return success
 
-        firefox_targets = [
-            os.path.join(home, ".mozilla", "native-messaging-hosts"),
-            os.path.join(home, ".librewolf", "native-messaging-hosts"),
-        ]
 
-        # Install for Chromium family
-        for target_dir in chromium_targets:
-            try:
-                os.makedirs(target_dir, exist_ok=True)
-                manifest_file = os.path.join(target_dir, f"{HOST_NAME}.json")
-                with open(manifest_file, "w", encoding="utf-8") as f:
-                    json.dump(chrome_manifest, f, indent=2)
-                print(f"[OK] Installed Chrome native host manifest: {manifest_file}")
-                installed_count += 1
-            except Exception as e:
-                print(f"[SKIP] Failed to write {target_dir}: {e}")
-
-        # Install for Firefox family
-        for target_dir in firefox_targets:
-            try:
-                os.makedirs(target_dir, exist_ok=True)
-                manifest_file = os.path.join(target_dir, f"{HOST_NAME}.json")
-                with open(manifest_file, "w", encoding="utf-8") as f:
-                    json.dump(firefox_manifest, f, indent=2)
-                print(f"[OK] Installed Firefox native host manifest: {manifest_file}")
-                installed_count += 1
-            except Exception as e:
-                print(f"[SKIP] Failed to write {target_dir}: {e}")
-
-    print(f"\nSuccessfully installed IDM Native Messaging Host to {installed_count} browser locations.")
-    print(f"Host binary wrapper: {wrapper_path}")
-    print(f"Allowed Chrome origins: {allowed_origins}")
-    print("Allowed Firefox extensions: ['idm-linux@idm-linux.local']")
+# Aliases for convenient import
+register_native_host = register_native_messaging_host
+unregister_native_host = unregister_native_messaging_host
+is_native_host_registered = is_native_messaging_host_registered
 
 
 def main():
@@ -257,8 +86,27 @@ def main():
         dest="chrome_ids",
         help="Additional Chrome extension ID to allow in native messaging manifest."
     )
+    parser.add_argument(
+        "--binary-path", "-b",
+        dest="binary_path",
+        help="Explicit path to idm-native-host executable."
+    )
+    parser.add_argument(
+        "--uninstall", "-u",
+        action="store_true",
+        help="Unregister and remove native messaging host manifests."
+    )
     args = parser.parse_args()
-    install_manifests(custom_chrome_ids=args.chrome_ids)
+
+    if args.uninstall:
+        ok = unregister_native_messaging_host()
+        if ok:
+            print("[OK] Successfully uninstalled IDM native messaging host manifests.")
+        else:
+            print("[INFO] No IDM native messaging host manifests were found to remove.")
+        return
+
+    install_manifests(custom_chrome_ids=args.chrome_ids, binary_path=args.binary_path)
 
 
 if __name__ == "__main__":

@@ -20,6 +20,12 @@ from idm_core.platform import (
     reveal_in_file_manager,
     setup_windows_app_id,
     system_power_action,
+    derive_chrome_extension_id,
+    get_default_chrome_extension_ids,
+    resolve_native_host_binary,
+    is_native_messaging_host_registered,
+    register_native_messaging_host,
+    unregister_native_messaging_host,
 )
 
 
@@ -114,6 +120,31 @@ class TestPlatformAbstraction(unittest.TestCase):
             res = show_desktop_notification("Test Title", "Test Message")
             self.assertTrue(res)
             mock_popen.assert_called()
+
+    def test_derive_chrome_extension_id(self):
+        sample_key = "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAoA6YmseHHQDbr/A/lPOhNqOZOfF5C0VmA/Sa3mHtL4UUGx+uyDK3Plpw4v8NlTETh5HqmR2cPxoFRWV0uUcb+X38gFEvF7HXdAkhS5FN3di5xSmiQdPvBA/IpppuHDx1OeAR7y7vmMCcmynvvJlaOPYtjl4K664GL4rn7oF8alM1p0HVrH6Q4zGo/0PkPkua1rKkIUSFZFsEJ5c46h4FHFdWjhcH/tdYQBwBirtHskFEzFn5/1k9j+JkahJygMvEKt79GQt1o7CXzWrjaXRLPQp9/cJFc/eH1/wroDxPKogC60wdU7JB7O+4/5Lmz56M4691f3YyrQLj2xy7SOVH+wIDAQAB"
+        ext_id = derive_chrome_extension_id(sample_key)
+        self.assertEqual(len(ext_id), 32)
+        self.assertTrue(all("a" <= c <= "p" for c in ext_id))
+
+    def test_get_default_chrome_extension_ids(self):
+        ids = get_default_chrome_extension_ids()
+        self.assertIsInstance(ids, list)
+        self.assertGreater(len(ids), 0)
+
+    def test_resolve_native_host_binary_explicit(self):
+        with tempfile.NamedTemporaryFile(delete=False) as f:
+            temp_bin = f.name
+        try:
+            resolved = resolve_native_host_binary(temp_bin)
+            self.assertEqual(os.path.normpath(resolved), os.path.normpath(temp_bin))
+        finally:
+            if os.path.exists(temp_bin):
+                os.remove(temp_bin)
+
+    def test_is_native_messaging_host_registered(self):
+        res = is_native_messaging_host_registered()
+        self.assertIsInstance(res, bool)
 
 
 if __name__ == "__main__":
