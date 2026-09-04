@@ -117,7 +117,7 @@ class IPCServer:
                 
                 return {"status": "ok", "formats": formats}
 
-            elif action in ["add_download", "intercept"]:
+            elif action in ["add_download", "intercept", "download", "download_url"]:
                 url = msg.get("url")
                 if not url:
                     return {"status": "error", "error": "URL is required"}

@@ -43,6 +43,17 @@ class TestNativeHost(unittest.TestCase):
             self.assertTrue(ensure_idm_running(mock_client))
             mock_popen.assert_called()
 
+    def test_handle_browser_message_download_aliases(self):
+        from unittest.mock import MagicMock
+        mock_client = MagicMock()
+        mock_client.is_server_running.return_value = True
+        mock_client.send_request.return_value = {"status": "ok", "message": "download_requested"}
+
+        for act in ["add_download", "download", "download_url", "intercept", "download_video"]:
+            res = handle_browser_message({"action": act, "url": "https://example.com/test.zip"}, ipc_client=mock_client)
+            self.assertEqual(res.get("status"), "ok")
+            mock_client.send_request.assert_called_with({"action": "add_download", "url": "https://example.com/test.zip"})
+
 
 if __name__ == "__main__":
     unittest.main()

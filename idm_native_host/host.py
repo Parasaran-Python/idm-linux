@@ -180,9 +180,9 @@ def handle_browser_message(msg: Dict[str, Any], ipc_client: Optional[IPCClient] 
     # Forward to IDM IPC
     if action in ["open_gui", "show_gui"]:
         return client.send_request({"action": "show_gui"})
-    elif action in ["add_download", "intercept", "download_video"]:
+    elif action in ["add_download", "intercept", "download_video", "download", "download_url"]:
         forward_payload = dict(msg)
-        if action in ["intercept", "download_video"]:
+        if action in ["intercept", "download_video", "download", "download_url"]:
             forward_payload["action"] = "add_download"
         return client.send_request(forward_payload)
     else:
