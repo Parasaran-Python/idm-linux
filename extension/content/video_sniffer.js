@@ -72,7 +72,7 @@
     }
 
     // Filter out raw YouTube / GoogleVideo DASH fragments (they lack audio)
-    if (lower.includes("googlevideo.com/videoplayback") || lower.includes("/videoplayback")) {
+    if (lower.includes("googlevideo.com/videoplayback") || (lower.includes("/videoplayback") && (lower.includes("expire=") || lower.includes("sparams=")))) {
       return true;
     }
 
