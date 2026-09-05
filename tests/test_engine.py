@@ -138,11 +138,22 @@ class TestDownloadEngine(unittest.TestCase):
         from idm_core.segment_downloader import SegmentDownloader
         from idm_core.ytdlp_downloader import YTDLPDownloader
 
+        class StubYTDLPDownloader(YTDLPDownloader):
+            def __init__(self, download_id: str, url: str, save_path: str):
+                self.download_id = download_id
+                self.url = url
+                self.save_path = save_path
+                self.status = "downloading"
+                self.downloaded_bytes = 0
+                self.total_bytes = 0
+            def start(self): pass
+            def pause(self): self.status = "paused"
+            def cancel(self): self.status = "cancelled"
+
         url = f"http://127.0.0.1:{self.port}/package.zip"
         dl_id = self.engine.add_download(url=url, start_immediately=False)
 
-        fake_ytdlp = YTDLPDownloader(dl_id, url, os.path.join(self.test_dir, "pkg.zip"))
-        fake_ytdlp.start = unittest.mock.MagicMock()
+        fake_ytdlp = StubYTDLPDownloader(dl_id, url, os.path.join(self.test_dir, "pkg.zip"))
         self.engine.active_downloaders[dl_id] = fake_ytdlp
 
         with unittest.mock.patch.object(SegmentDownloader, "start"):
@@ -154,11 +165,22 @@ class TestDownloadEngine(unittest.TestCase):
     def test_ytdlp_downloader_fallback_does_not_revive_paused_download(self):
         from idm_core.ytdlp_downloader import YTDLPDownloader
 
+        class StubYTDLPDownloader(YTDLPDownloader):
+            def __init__(self, download_id: str, url: str, save_path: str):
+                self.download_id = download_id
+                self.url = url
+                self.save_path = save_path
+                self.status = "downloading"
+                self.downloaded_bytes = 0
+                self.total_bytes = 0
+            def start(self): pass
+            def pause(self): self.status = "paused"
+            def cancel(self): self.status = "cancelled"
+
         url = f"http://127.0.0.1:{self.port}/package.zip"
         dl_id = self.engine.add_download(url=url, start_immediately=False)
 
-        fake_ytdlp = YTDLPDownloader(dl_id, url, os.path.join(self.test_dir, "pkg.zip"))
-        fake_ytdlp.start = unittest.mock.MagicMock()
+        fake_ytdlp = StubYTDLPDownloader(dl_id, url, os.path.join(self.test_dir, "pkg.zip"))
         self.engine.active_downloaders[dl_id] = fake_ytdlp
 
         # Simulate user pausing before error callback runs
@@ -195,11 +217,22 @@ class TestDownloadEngine(unittest.TestCase):
         from idm_core.segment_downloader import SegmentDownloader
         from idm_core.ytdlp_downloader import YTDLPDownloader
 
+        class StubYTDLPDownloader(YTDLPDownloader):
+            def __init__(self, download_id: str, url: str, save_path: str):
+                self.download_id = download_id
+                self.url = url
+                self.save_path = save_path
+                self.status = "downloading"
+                self.downloaded_bytes = 0
+                self.total_bytes = 0
+            def start(self): pass
+            def pause(self): self.status = "paused"
+            def cancel(self): self.status = "cancelled"
+
         url = f"http://127.0.0.1:{self.port}/package.zip"
         dl_id = self.engine.add_download(url=url, start_immediately=False)
 
-        fake_ytdlp = YTDLPDownloader(dl_id, url, os.path.join(self.test_dir, "pkg.zip"))
-        fake_ytdlp.start = unittest.mock.MagicMock()
+        fake_ytdlp = StubYTDLPDownloader(dl_id, url, os.path.join(self.test_dir, "pkg.zip"))
         self.engine.active_downloaders[dl_id] = fake_ytdlp
 
         with unittest.mock.patch.object(SegmentDownloader, "start", side_effect=RuntimeError("Spawn failed")):
@@ -221,11 +254,22 @@ class TestDownloadEngine(unittest.TestCase):
         from idm_core.segment_downloader import SegmentDownloader
         from idm_core.ytdlp_downloader import YTDLPDownloader
 
+        class StubYTDLPDownloader(YTDLPDownloader):
+            def __init__(self, download_id: str, url: str, save_path: str):
+                self.download_id = download_id
+                self.url = url
+                self.save_path = save_path
+                self.status = "downloading"
+                self.downloaded_bytes = 0
+                self.total_bytes = 0
+            def start(self): pass
+            def pause(self): self.status = "paused"
+            def cancel(self): self.status = "cancelled"
+
         url = f"http://127.0.0.1:{self.port}/package.zip"
         dl_id = self.engine.add_download(url=url, start_immediately=False)
 
-        fake_ytdlp = YTDLPDownloader(dl_id, url, os.path.join(self.test_dir, "pkg.zip"))
-        fake_ytdlp.start = unittest.mock.MagicMock()
+        fake_ytdlp = StubYTDLPDownloader(dl_id, url, os.path.join(self.test_dir, "pkg.zip"))
         self.engine.active_downloaders[dl_id] = fake_ytdlp
 
         def pause_and_raise():
@@ -243,12 +287,23 @@ class TestDownloadEngine(unittest.TestCase):
         from idm_core.segment_downloader import SegmentDownloader
         from idm_core.ytdlp_downloader import YTDLPDownloader
 
+        class StubYTDLPDownloader(YTDLPDownloader):
+            def __init__(self, download_id: str, url: str, save_path: str):
+                self.download_id = download_id
+                self.url = url
+                self.save_path = save_path
+                self.status = "downloading"
+                self.downloaded_bytes = 0
+                self.total_bytes = 0
+            def start(self): pass
+            def pause(self): self.status = "paused"
+            def cancel(self): self.status = "cancelled"
+
         url = f"http://127.0.0.1:{self.port}/package.zip"
         dl_id = self.engine.add_download(url=url, start_immediately=False)
         self.engine.database.update_download(dl_id, downloaded_bytes=1024)
 
-        fake_ytdlp = YTDLPDownloader(dl_id, url, os.path.join(self.test_dir, "pkg.zip"))
-        fake_ytdlp.start = unittest.mock.MagicMock()
+        fake_ytdlp = StubYTDLPDownloader(dl_id, url, os.path.join(self.test_dir, "pkg.zip"))
         self.engine.active_downloaders[dl_id] = fake_ytdlp
 
         with unittest.mock.patch.object(SegmentDownloader, "start"):
@@ -259,6 +314,17 @@ class TestDownloadEngine(unittest.TestCase):
 
         active = self.engine.active_downloaders.get(dl_id)
         self.assertIsInstance(active, SegmentDownloader)
+
+    def test_extensionless_url_routes_to_segment_downloader(self):
+        from idm_core.segment_downloader import SegmentDownloader
+
+        url = "https://cdn.example.com/video/12345"
+        dl_id = self.engine.add_download(url=url, start_immediately=False)
+
+        with unittest.mock.patch.object(SegmentDownloader, "start"):
+            self.engine.start_download(dl_id)
+            active = self.engine.active_downloaders.get(dl_id)
+            self.assertIsInstance(active, SegmentDownloader)
 
 
 if __name__ == "__main__":
