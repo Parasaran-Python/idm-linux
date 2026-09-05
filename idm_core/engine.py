@@ -344,14 +344,18 @@ class DownloadEngine:
         with self._lock:
             downloader = self.active_downloaders.pop(download_id, None)
 
-            # Resilient fallback: if YTDLPDownloader failed and 0 bytes were downloaded,
+            # Resilient fallback: if YTDLPDownloader failed (with 0 bytes or safety/unsupported errors),
             # try falling back to standard SegmentDownloader if the URL is an HTTP/HTTPS resource
             if isinstance(downloader, YTDLPDownloader):
                 record = self.database.get_download(download_id)
+                is_unusual_ext_error = (
+                    "unusual and will be skipped for safety reasons" in error_msg.lower()
+                    or "unsupported url" in error_msg.lower()
+                )
                 if (
                     record
                     and record.get("status") not in ["paused", "cancelled", "completed"]
-                    and record.get("downloaded_bytes", 0) == 0
+                    and (record.get("downloaded_bytes", 0) == 0 or is_unusual_ext_error)
                 ):
                     url = record.get("url", "")
                     if url.startswith(("http://", "https://")):

@@ -142,9 +142,11 @@ class TestDownloadEngine(unittest.TestCase):
         dl_id = self.engine.add_download(url=url, start_immediately=False)
 
         fake_ytdlp = YTDLPDownloader(dl_id, url, os.path.join(self.test_dir, "pkg.zip"))
+        fake_ytdlp.start = unittest.mock.MagicMock()
         self.engine.active_downloaders[dl_id] = fake_ytdlp
 
-        self.engine._on_error_callback(dl_id, "ERROR: The extracted extension ('php') is unusual")
+        with unittest.mock.patch.object(SegmentDownloader, "start"):
+            self.engine._on_error_callback(dl_id, "ERROR: The extracted extension ('php') is unusual")
 
         active = self.engine.active_downloaders.get(dl_id)
         self.assertIsInstance(active, SegmentDownloader)
@@ -156,6 +158,7 @@ class TestDownloadEngine(unittest.TestCase):
         dl_id = self.engine.add_download(url=url, start_immediately=False)
 
         fake_ytdlp = YTDLPDownloader(dl_id, url, os.path.join(self.test_dir, "pkg.zip"))
+        fake_ytdlp.start = unittest.mock.MagicMock()
         self.engine.active_downloaders[dl_id] = fake_ytdlp
 
         # Simulate user pausing before error callback runs
@@ -196,6 +199,7 @@ class TestDownloadEngine(unittest.TestCase):
         dl_id = self.engine.add_download(url=url, start_immediately=False)
 
         fake_ytdlp = YTDLPDownloader(dl_id, url, os.path.join(self.test_dir, "pkg.zip"))
+        fake_ytdlp.start = unittest.mock.MagicMock()
         self.engine.active_downloaders[dl_id] = fake_ytdlp
 
         with unittest.mock.patch.object(SegmentDownloader, "start", side_effect=RuntimeError("Spawn failed")):
@@ -221,6 +225,7 @@ class TestDownloadEngine(unittest.TestCase):
         dl_id = self.engine.add_download(url=url, start_immediately=False)
 
         fake_ytdlp = YTDLPDownloader(dl_id, url, os.path.join(self.test_dir, "pkg.zip"))
+        fake_ytdlp.start = unittest.mock.MagicMock()
         self.engine.active_downloaders[dl_id] = fake_ytdlp
 
         def pause_and_raise():
@@ -233,6 +238,27 @@ class TestDownloadEngine(unittest.TestCase):
         rec = self.engine.database.get_download(dl_id)
         self.assertEqual(rec["status"], "paused")
         self.assertNotIn("Connection dropped during start", rec.get("error_msg", ""))
+
+    def test_ytdlp_downloader_fallback_triggers_on_unusual_extension_with_partial_bytes(self):
+        from idm_core.segment_downloader import SegmentDownloader
+        from idm_core.ytdlp_downloader import YTDLPDownloader
+
+        url = f"http://127.0.0.1:{self.port}/package.zip"
+        dl_id = self.engine.add_download(url=url, start_immediately=False)
+        self.engine.database.update_download(dl_id, downloaded_bytes=1024)
+
+        fake_ytdlp = YTDLPDownloader(dl_id, url, os.path.join(self.test_dir, "pkg.zip"))
+        fake_ytdlp.start = unittest.mock.MagicMock()
+        self.engine.active_downloaders[dl_id] = fake_ytdlp
+
+        with unittest.mock.patch.object(SegmentDownloader, "start"):
+            self.engine._on_error_callback(
+                dl_id,
+                "ERROR: The extracted extension ('php') is unusual and will be skipped for safety reasons"
+            )
+
+        active = self.engine.active_downloaders.get(dl_id)
+        self.assertIsInstance(active, SegmentDownloader)
 
 
 if __name__ == "__main__":

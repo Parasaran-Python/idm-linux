@@ -304,7 +304,8 @@ class TestYTDLPDownloader(unittest.TestCase):
 
             self.assertTrue(mock_popen.called)
             cmd = mock_popen.call_args[0][0]
-            self.assertIn("--compat-options", cmd)
+            self.assertEqual(cmd.count("--compat-options"), 1)
+            self.assertEqual(cmd.count("--remote-components"), 1)
             idx = cmd.index("--compat-options")
             self.assertEqual(cmd[idx + 1], "allow-unsafe-ext")
 

@@ -17,8 +17,13 @@ from idm_core.platform import resolve_binary
 
 
 class YTDLPDownloader:
+    # Explicit tuple of direct static video and audio formats.
+    # Note: Streaming manifests (.m3u8, .mpd) and fragmented media chunks (.m4s)
+    # are excluded as they require specialized manifest parsers (StreamDownloader).
+    # Static image formats are processed via standard engine HTTP downloads.
     DIRECT_MEDIA_EXTS = (
         ".mp4", ".mkv", ".webm", ".avi", ".mov", ".flv", ".wmv", ".m4v", ".3gp", ".ts",
+        ".mpg", ".mpeg", ".ogv",
         ".mp3", ".m4a", ".aac", ".ogg", ".flac", ".wav", ".opus", ".wma"
     )
 
