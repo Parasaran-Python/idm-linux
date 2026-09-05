@@ -78,25 +78,17 @@ class YTDLPDownloader:
     @classmethod
     def is_direct_media_url(cls, url: str) -> bool:
         """Check if URL directly points to a media file (.mp4, .webm, .mp3, etc.)."""
-        if not url:
+        if not url or cls.is_video_platform_url(url):
             return False
         try:
             parsed = urllib.parse.urlparse(url)
             clean_path = parsed.path.rstrip("/")
+            if clean_path.startswith(("/watch", "/shorts", "/live")):
+                return False
             ext = os.path.splitext(clean_path)[1].lower()
-            if ext in cls.DIRECT_MEDIA_EXTS:
-                return True
-            if parsed.query:
-                qs = urllib.parse.parse_qs(parsed.query)
-                for values in qs.values():
-                    for v in values:
-                        v_clean = v.split("?")[0].rstrip("/")
-                        v_ext = os.path.splitext(v_clean)[1].lower()
-                        if v_ext in cls.DIRECT_MEDIA_EXTS:
-                            return True
+            return ext in cls.DIRECT_MEDIA_EXTS
         except Exception:
-            pass
-        return False
+            return False
 
     @staticmethod
     def is_video_platform_url(url: str) -> bool:
@@ -140,9 +132,9 @@ class YTDLPDownloader:
             "--no-playlist",
             "--no-check-certificates",
             "--geo-bypass",
-            "--compat-options", "allow-unsafe-ext",
-            "--remote-components", "ejs:github"
         ]
+        if "yt-dlp" in bin_name.lower():
+            cmd.extend(["--compat-options", "allow-unsafe-ext", "--remote-components", "ejs:github"])
         cmd.extend(cls._get_js_runtime_args())
         cmd.extend(cls._get_extractor_args(url))
         cmd.append(url)
@@ -327,9 +319,9 @@ class YTDLPDownloader:
             "--no-playlist",
             "--no-check-certificates",
             "--geo-bypass",
-            "--compat-options", "allow-unsafe-ext",
-            "--remote-components", "ejs:github"
         ]
+        if "yt-dlp" in bin_name.lower():
+            cmd.extend(["--compat-options", "allow-unsafe-ext", "--remote-components", "ejs:github"])
         cmd.extend(cls._get_js_runtime_args())
         cmd.extend(cls._get_extractor_args(url))
         cmd.append(url)
@@ -446,10 +438,10 @@ class YTDLPDownloader:
             "--no-playlist",
             "--no-check-certificates",
             "--geo-bypass",
-            "--compat-options", "allow-unsafe-ext",
-            "--remote-components", "ejs:github",
             "-o", self.save_path,
         ]
+        if "yt-dlp" in bin_name.lower():
+            cmd.extend(["--compat-options", "allow-unsafe-ext", "--remote-components", "ejs:github"])
 
         cmd.extend(self._get_js_runtime_args())
         cmd.extend(self._get_extractor_args(self.url))

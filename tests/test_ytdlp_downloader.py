@@ -260,8 +260,9 @@ class TestYTDLPDownloader(unittest.TestCase):
         self.assertTrue(YTDLPDownloader.is_direct_media_url(mp4_url))
         self.assertTrue(YTDLPDownloader.is_direct_media_url(webm_url))
         self.assertTrue(YTDLPDownloader.is_direct_media_url(mp3_url))
-        self.assertTrue(YTDLPDownloader.is_direct_media_url(query_mp4_url))
 
+        # PHP script, platforms, manifests, and watch pages are not direct media URLs
+        self.assertFalse(YTDLPDownloader.is_direct_media_url(query_mp4_url))
         self.assertFalse(YTDLPDownloader.is_direct_media_url(yt_url))
         self.assertFalse(YTDLPDownloader.is_direct_media_url(vimeo_url))
         self.assertFalse(YTDLPDownloader.is_direct_media_url(hls_url))
@@ -270,7 +271,8 @@ class TestYTDLPDownloader(unittest.TestCase):
 
     def test_compat_options_in_ytdlp_invocations(self):
         with unittest.mock.patch("subprocess.Popen") as mock_popen, \
-             unittest.mock.patch.object(YTDLPDownloader, "is_ytdlp_available", return_value=True):
+             unittest.mock.patch.object(YTDLPDownloader, "is_ytdlp_available", return_value=True), \
+             unittest.mock.patch("idm_core.ytdlp_downloader.resolve_binary", return_value="/usr/bin/yt-dlp"):
             proc = unittest.mock.MagicMock()
             proc.stdout = []
             proc.wait.return_value = None
@@ -285,6 +287,24 @@ class TestYTDLPDownloader(unittest.TestCase):
             self.assertIn("--compat-options", cmd)
             idx = cmd.index("--compat-options")
             self.assertEqual(cmd[idx + 1], "allow-unsafe-ext")
+
+    def test_legacy_youtubedl_omits_unsupported_flags(self):
+        with unittest.mock.patch("subprocess.Popen") as mock_popen, \
+             unittest.mock.patch.object(YTDLPDownloader, "is_ytdlp_available", return_value=True), \
+             unittest.mock.patch("idm_core.ytdlp_downloader.resolve_binary", return_value="/usr/bin/youtube-dl"):
+            proc = unittest.mock.MagicMock()
+            proc.stdout = []
+            proc.wait.return_value = None
+            proc.returncode = 0
+            mock_popen.return_value = proc
+
+            dl = YTDLPDownloader("dl2", "https://youtube.com/watch?v=1", "/tmp/out.mp4")
+            dl._run_ytdlp()
+
+            self.assertTrue(mock_popen.called)
+            cmd = mock_popen.call_args[0][0]
+            self.assertNotIn("--compat-options", cmd)
+            self.assertNotIn("--remote-components", cmd)
 
 
 if __name__ == "__main__":

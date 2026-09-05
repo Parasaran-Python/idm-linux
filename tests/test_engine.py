@@ -149,6 +149,65 @@ class TestDownloadEngine(unittest.TestCase):
         active = self.engine.active_downloaders.get(dl_id)
         self.assertIsInstance(active, SegmentDownloader)
 
+    def test_ytdlp_downloader_fallback_does_not_revive_paused_download(self):
+        from idm_core.ytdlp_downloader import YTDLPDownloader
+
+        url = f"http://127.0.0.1:{self.port}/package.zip"
+        dl_id = self.engine.add_download(url=url, start_immediately=False)
+
+        fake_ytdlp = YTDLPDownloader(dl_id, url, os.path.join(self.test_dir, "pkg.zip"))
+        self.engine.active_downloaders[dl_id] = fake_ytdlp
+
+        # Simulate user pausing before error callback runs
+        self.engine.database.update_download(dl_id, status="paused")
+
+        self.engine._on_error_callback(dl_id, "ERROR: connection closed")
+
+        # Must not have revived the download in active_downloaders
+        active = self.engine.active_downloaders.get(dl_id)
+        self.assertIsNone(active)
+
+    def test_start_download_with_null_headers(self):
+        from idm_core.segment_downloader import SegmentDownloader
+
+        url = f"http://127.0.0.1:{self.port}/package.zip"
+        dl_id = self.engine.add_download(url=url, start_immediately=False)
+
+        # Manually set headers to None in record
+        with unittest.mock.patch.object(self.engine.database, "get_download") as mock_get:
+            mock_get.return_value = {
+                "id": dl_id,
+                "url": url,
+                "save_path": os.path.join(self.test_dir, "pkg.zip"),
+                "headers": None,
+                "connections_count": 4,
+                "total_bytes": 0,
+            }
+            # Should not raise AttributeError: 'NoneType' object has no attribute 'get'
+            self.engine.start_download(dl_id)
+            active = self.engine.active_downloaders.get(dl_id)
+            self.assertIsInstance(active, SegmentDownloader)
+
+    def test_ytdlp_downloader_fallback_handles_start_exception(self):
+        from idm_core.segment_downloader import SegmentDownloader
+        from idm_core.ytdlp_downloader import YTDLPDownloader
+
+        url = f"http://127.0.0.1:{self.port}/package.zip"
+        dl_id = self.engine.add_download(url=url, start_immediately=False)
+
+        fake_ytdlp = YTDLPDownloader(dl_id, url, os.path.join(self.test_dir, "pkg.zip"))
+        self.engine.active_downloaders[dl_id] = fake_ytdlp
+
+        with unittest.mock.patch.object(SegmentDownloader, "start", side_effect=RuntimeError("Spawn failed")):
+            self.engine._on_error_callback(dl_id, "YTDLP failed")
+
+        active = self.engine.active_downloaders.get(dl_id)
+        self.assertIsNone(active)
+        rec = self.engine.database.get_download(dl_id)
+        self.assertEqual(rec["status"], "error")
+        self.assertIn("Spawn failed", rec["error_msg"])
+
 
 if __name__ == "__main__":
     unittest.main()
+
