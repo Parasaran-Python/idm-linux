@@ -78,7 +78,7 @@ for sz in 16 32 48 128 256 512; do
     fi
 done
 cp "${REPO_DIR}/scripts/pv-idm.desktop" "${DESKTOP_DIR}/pv-idm.desktop"
-ln -sf "${DESKTOP_DIR}/pv-idm.desktop" "${DESKTOP_DIR}/idm-linux.desktop"
+rm -f "${DESKTOP_DIR}/idm-linux.desktop"
 
 # 6. Register Browser Native Messaging Hosts
 echo "[*] Registering Browser Native Messaging Hosts..."
