@@ -72,6 +72,20 @@ class TestGUIDialogs(unittest.TestCase):
                 worker._run()
                 mock_probe.assert_not_called()
 
+    def test_probe_worker_platform_media_uses_ytdlp(self):
+        from idm_gui.dialogs.download_info_dialog import ProbeWorker
+        from idm_core.ytdlp_downloader import YTDLPDownloader
+        import unittest.mock
+
+        worker = ProbeWorker(
+            url="https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+            headers={"quality": "1080"}
+        )
+        with unittest.mock.patch.object(YTDLPDownloader, "is_ytdlp_available", return_value=True), \
+             unittest.mock.patch.object(YTDLPDownloader, "probe_media_info", return_value={"filesize": 1000, "filename": "video.mp4"}) as mock_probe:
+            worker._run()
+            mock_probe.assert_called_once_with("https://www.youtube.com/watch?v=dQw4w9WgXcQ", quality="1080")
+
 
 if __name__ == "__main__":
     unittest.main()
