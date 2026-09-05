@@ -242,6 +242,92 @@ class TestYTDLPDownloader(unittest.TestCase):
             self.assertEqual(downloader.total_bytes, 55000000)
 
 
+    def test_acodec_priority_prefers_aac_over_opus(self):
+        aac_score = YTDLPDownloader._get_acodec_priority("mp4a.40.2")
+        opus_score = YTDLPDownloader._get_acodec_priority("opus")
+        self.assertGreater(aac_score, opus_score, "AAC/mp4a must have higher priority than Opus for universal MP4 container compatibility")
+
+    def test_extract_formats_selects_aac_over_opus(self):
+        sample_json = {
+            "formats": [
+                {"height": 1080, "fps": 30, "tbr": 2500, "vcodec": "av01.0.08M.08", "acodec": "none", "filesize": 370000000},
+                {"height": None, "vcodec": "none", "acodec": "opus", "filesize": 26000000},
+                {"height": None, "vcodec": "none", "acodec": "mp4a.40.2", "filesize": 30000000}
+            ]
+        }
+        import json
+        from unittest.mock import patch, MagicMock
+
+        mock_res = MagicMock()
+        mock_res.returncode = 0
+        mock_res.stdout = json.dumps(sample_json)
+
+        with patch.object(YTDLPDownloader, "is_ytdlp_available", return_value=True), \
+             patch("subprocess.run", return_value=mock_res):
+            formats = YTDLPDownloader.extract_media_formats("https://youtube.com/watch?v=123")
+            fmt_1080 = next(f for f in formats if f["quality"] == "1080")
+            # Should prefer the 30MB AAC audio over 26MB Opus audio: 370MB + 30MB = 400MB
+            self.assertEqual(fmt_1080["filesize"], 370000000 + 30000000)
+
+    def test_run_ytdlp_command_args_with_ffmpeg(self):
+        from unittest.mock import patch, MagicMock
+        downloader = YTDLPDownloader("cmd-test", "https://youtube.com/watch?v=123", "/tmp/out.mp4", quality="1080")
+
+        mock_proc = MagicMock()
+        mock_proc.stdout = []
+        mock_proc.returncode = 0
+        mock_proc.wait.return_value = 0
+
+        with patch("idm_core.ytdlp_downloader.resolve_binary") as mock_res_bin, \
+             patch("subprocess.Popen", return_value=mock_proc) as mock_popen:
+            def fake_resolve(bin_name):
+                if bin_name == "ffmpeg":
+                    return "/usr/bin/ffmpeg"
+                return "/usr/bin/yt-dlp"
+            mock_res_bin.side_effect = fake_resolve
+
+            downloader._run_ytdlp()
+
+            self.assertTrue(mock_popen.called)
+            cmd = mock_popen.call_args[0][0]
+            # Must prefer AAC in format selection
+            cmd_str = " ".join(cmd)
+            self.assertIn("bestaudio[ext=m4a]", cmd_str)
+            self.assertIn("-S", cmd)
+            s_idx = cmd.index("-S")
+            self.assertIn("acodec:m4a", cmd[s_idx + 1])
+            self.assertIn("--postprocessor-args", cmd)
+            pp_idx = cmd.index("--postprocessor-args")
+            self.assertIn("Merger:-c:v copy -c:a aac", cmd[pp_idx + 1])
+
+    def test_run_ytdlp_command_args_without_ffmpeg(self):
+        from unittest.mock import patch, MagicMock
+        downloader = YTDLPDownloader("no-ffmpeg-test", "https://youtube.com/watch?v=123", "/tmp/out.mp4", quality="1080")
+
+        mock_proc = MagicMock()
+        mock_proc.stdout = []
+        mock_proc.returncode = 0
+        mock_proc.wait.return_value = 0
+
+        with patch("idm_core.ytdlp_downloader.resolve_binary") as mock_res_bin, \
+             patch("subprocess.Popen", return_value=mock_proc) as mock_popen:
+            def fake_resolve(bin_name):
+                if bin_name == "ffmpeg":
+                    return None
+                return "/usr/bin/yt-dlp"
+            mock_res_bin.side_effect = fake_resolve
+
+            downloader._run_ytdlp()
+
+            self.assertTrue(mock_popen.called)
+            cmd = mock_popen.call_args[0][0]
+            cmd_str = " ".join(cmd)
+            # Without ffmpeg, must NOT ask for separate video+audio streams which cannot be merged
+            self.assertNotIn("bestvideo+", cmd_str)
+            self.assertIn("best[height<=1080]/best", cmd_str)
+            self.assertNotIn("--merge-output-format", cmd_str)
+
+
 if __name__ == "__main__":
     unittest.main()
 

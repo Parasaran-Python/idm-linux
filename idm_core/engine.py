@@ -72,12 +72,22 @@ class DownloadEngine:
         conn_count = connections or self.config.max_connections
         headers = headers or {}
         
+        # Resolve raw Google Video DASH chunk to full YouTube video URL if referer or page_url is available
+        referer = headers.get("Referer") or headers.get("referer") or headers.get("page_url", "")
+        if ("videoplayback" in url or "googlevideo.com" in url) and ("youtube.com" in referer or "youtu.be" in referer):
+            url = referer
+            if filename in [None, "", "videoplayback", "download"]:
+                filename = None
+
         # Inferred filename
         if not filename:
             path_part = urllib.parse.urlparse(url).path
             filename = os.path.basename(path_part) or "download"
             if filename.endswith(".m3u8") or filename.endswith(".mpd"):
                 filename = os.path.splitext(filename)[0] + ".mp4"
+            elif "/watch" in url or "youtu.be" in url or "/shorts" in url:
+                if not filename or filename == "watch" or filename == "download":
+                    filename = "video.mp4"
 
         # Categorize
         if not category or category == "General":

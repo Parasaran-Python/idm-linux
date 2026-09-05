@@ -220,6 +220,11 @@ function isMediaSegment(url) {
     return true;
   }
 
+  // Filter out YouTube adaptive video chunks (videoplayback) which are un-multiplexed/soundless segments
+  if (lower.includes("googlevideo.com/videoplayback") || lower.includes("/videoplayback")) {
+    return true;
+  }
+
   return false;
 }
 

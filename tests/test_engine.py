@@ -117,6 +117,17 @@ class TestDownloadEngine(unittest.TestCase):
         self.assertTrue(queue_state["is_active"])
         self.engine.stop_queue(q_id)
 
+    def test_add_download_normalizes_videoplayback_url_with_youtube_referer(self):
+        raw_dash_url = "https://rr1---sn-4g5ednsl.googlevideo.com/videoplayback?expire=12345&mime=video%2Fmp4"
+        yt_watch_url = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+        dl_id = self.engine.add_download(
+            url=raw_dash_url,
+            headers={"Referer": yt_watch_url},
+            start_immediately=False
+        )
+        info = self.engine.get_download_info(dl_id)
+        self.assertEqual(info["url"], yt_watch_url, "Raw videoplayback URL with YouTube Referer must be normalized to YouTube watch URL")
+
 
 if __name__ == "__main__":
     unittest.main()

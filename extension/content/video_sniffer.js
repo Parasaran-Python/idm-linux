@@ -71,6 +71,11 @@
       return false;
     }
 
+    // Filter out raw YouTube / GoogleVideo DASH fragments (they lack audio)
+    if (lower.includes("googlevideo.com/videoplayback") || lower.includes("/videoplayback")) {
+      return true;
+    }
+
     // Filter out chunk files and fragment extensions
     if (lower.includes(".m4s") || lower.includes(".m4f") || lower.includes(".f4m") || lower.includes(".f4f")) {
       return true;
@@ -403,7 +408,7 @@
     const path = window.location.pathname;
 
     if (host.includes("youtube.com")) {
-      return path.startsWith("/watch") || path.startsWith("/shorts") || path.startsWith("/live");
+      return path.startsWith("/watch") || path.startsWith("/shorts") || path.startsWith("/live") || path.startsWith("/embed");
     }
     if (host.includes("youtu.be")) return true;
     if (host.includes("vimeo.com")) return path.length > 1 && path !== "/";
