@@ -208,10 +208,31 @@ class TestDownloadEngine(unittest.TestCase):
         self.assertIn("Spawn failed", rec["error_msg"])
 
     def test_add_download_infers_filename_with_trailing_slash(self):
-        url = "https://example.com/get_file/123/sample_video.mp4/?token=abc"
+        url = "https://example.com/get_file/123/sample%20video%20clip.mp4/?token=abc"
         dl_id = self.engine.add_download(url=url, start_immediately=False)
         rec = self.engine.database.get_download(dl_id)
-        self.assertEqual(rec["filename"], "sample_video.mp4")
+        self.assertEqual(rec["filename"], "sample video clip.mp4")
+
+    def test_ytdlp_downloader_fallback_avoids_overwriting_paused_status_on_start_error(self):
+        from idm_core.segment_downloader import SegmentDownloader
+        from idm_core.ytdlp_downloader import YTDLPDownloader
+
+        url = f"http://127.0.0.1:{self.port}/package.zip"
+        dl_id = self.engine.add_download(url=url, start_immediately=False)
+
+        fake_ytdlp = YTDLPDownloader(dl_id, url, os.path.join(self.test_dir, "pkg.zip"))
+        self.engine.active_downloaders[dl_id] = fake_ytdlp
+
+        def pause_and_raise():
+            self.engine.pause_download(dl_id)
+            raise RuntimeError("Connection dropped during start")
+
+        with unittest.mock.patch.object(SegmentDownloader, "start", side_effect=pause_and_raise):
+            self.engine._on_error_callback(dl_id, "YTDLP failed")
+
+        rec = self.engine.database.get_download(dl_id)
+        self.assertEqual(rec["status"], "paused")
+        self.assertNotIn("Connection dropped during start", rec.get("error_msg", ""))
 
 
 if __name__ == "__main__":

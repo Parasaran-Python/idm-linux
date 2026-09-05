@@ -74,7 +74,7 @@ class DownloadEngine:
         
         # Inferred filename
         if not filename:
-            path_part = urllib.parse.urlparse(url).path.rstrip("/")
+            path_part = urllib.parse.unquote(urllib.parse.urlparse(url).path.rstrip("/"))
             filename = os.path.basename(path_part) or "download"
             if filename.endswith(".m3u8") or filename.endswith(".mpd"):
                 filename = os.path.splitext(filename)[0] + ".mp4"
@@ -385,13 +385,17 @@ class DownloadEngine:
             if still_active:
                 try:
                     seg_downloader.start()
-                    self.notify("download_started", {"download_id": download_id})
+                    with self._lock:
+                        still_active_after = self.active_downloaders.get(download_id) is seg_downloader
+                    if still_active_after:
+                        self.notify("download_started", {"download_id": download_id})
                     return
                 except Exception as e:
                     with self._lock:
-                        self.active_downloaders.pop(download_id, None)
-                    self.database.update_download(download_id, status="error", error_msg=str(e), speed=0)
-                    self.notify("download_error", {"download_id": download_id, "error": str(e)})
+                        if self.active_downloaders.get(download_id) is seg_downloader:
+                            self.active_downloaders.pop(download_id, None)
+                            self.database.update_download(download_id, status="error", error_msg=str(e), speed=0)
+                            self.notify("download_error", {"download_id": download_id, "error": str(e)})
                     return
             return
 
