@@ -82,8 +82,7 @@ class DownloadEngine:
 
         # Inferred filename
         if not filename:
-            parsed_url = urllib.parse.urlparse(url)
-            path_part = parsed_url.path
+            path_part = urllib.parse.unquote(urllib.parse.urlparse(url).path.rstrip("/"))
             filename = os.path.basename(path_part) or "download"
             if filename.endswith(".m3u8") or filename.endswith(".mpd"):
                 filename = os.path.splitext(filename)[0] + ".mp4"
@@ -142,13 +141,19 @@ class DownloadEngine:
 
             url = record["url"]
             save_path = record["save_path"]
-            headers = record.get("headers", {})
+            headers = record.get("headers") or {}
             conn_count = record.get("connections_count", self.config.max_connections)
             saved_segments = self.database.get_segments(download_id)
 
             is_stream = url.endswith(".m3u8") or ".m3u8?" in url or url.endswith(".mpd") or ".mpd?" in url
-            is_platform_video = not is_stream and YTDLPDownloader.is_ytdlp_available() and (
-                YTDLPDownloader.is_video_platform_url(url) or bool(headers.get("quality")) or "/watch" in url or "/video" in url or "/shorts" in url
+            is_direct_media = YTDLPDownloader.is_direct_media_url(url)
+            is_platform_video = not is_stream and not is_direct_media and YTDLPDownloader.is_ytdlp_available() and (
+                YTDLPDownloader.is_video_platform_url(url)
+                or bool(headers.get("quality"))
+                or url.endswith("/watch")
+                or "/watch?" in url
+                or "/watch/" in url
+                or "/shorts/" in url
             )
 
             if is_platform_video:
@@ -345,9 +350,69 @@ class DownloadEngine:
         })
 
     def _on_error_callback(self, download_id: str, error_msg: str):
+        seg_downloader = None
         with self._lock:
-            if download_id in self.active_downloaders:
-                del self.active_downloaders[download_id]
+            downloader = self.active_downloaders.pop(download_id, None)
+
+            # Resilient fallback: if YTDLPDownloader failed (with 0 bytes or safety/unsupported errors),
+            # try falling back to standard SegmentDownloader if the URL is an HTTP/HTTPS resource
+            if isinstance(downloader, YTDLPDownloader):
+                record = self.database.get_download(download_id)
+                is_unusual_ext_error = (
+                    "unusual and will be skipped for safety reasons" in error_msg.lower()
+                    or "unsupported url" in error_msg.lower()
+                )
+                if (
+                    record
+                    and record.get("status") not in ["paused", "cancelled", "completed"]
+                    and (record.get("downloaded_bytes", 0) == 0 or is_unusual_ext_error)
+                ):
+                    url = record.get("url", "")
+                    if url.startswith(("http://", "https://")):
+                        try:
+                            conn_count = record.get("connections_count", self.config.max_connections)
+                            save_path = record["save_path"]
+                            saved_segments = self.database.get_segments(download_id)
+                            seg_downloader = SegmentDownloader(
+                                download_id=download_id,
+                                url=url,
+                                save_path=save_path,
+                                storage=self.storage,
+                                config=self.config,
+                                num_connections=conn_count,
+                                headers=record.get("headers") or {},
+                                saved_segments=saved_segments,
+                                on_progress=self._on_progress_callback,
+                                on_segment_update=self._on_segment_update_callback,
+                                on_complete=self._on_complete_callback,
+                                on_error=self._on_error_callback,
+                            )
+                            self.active_downloaders[download_id] = seg_downloader
+                            self.database.update_download(download_id, status="downloading", error_msg="")
+                        except Exception:
+                            seg_downloader = None
+                            self.active_downloaders.pop(download_id, None)
+
+        if seg_downloader:
+            with self._lock:
+                still_active = self.active_downloaders.get(download_id) is seg_downloader
+            if still_active:
+                try:
+                    seg_downloader.start()
+                    with self._lock:
+                        still_active_after = self.active_downloaders.get(download_id) is seg_downloader
+                    if still_active_after:
+                        self.notify("download_started", {"download_id": download_id})
+                    return
+                except Exception as e:
+                    with self._lock:
+                        if self.active_downloaders.get(download_id) is seg_downloader:
+                            self.active_downloaders.pop(download_id, None)
+                            self.database.update_download(download_id, status="error", error_msg=str(e), speed=0)
+                            self.notify("download_error", {"download_id": download_id, "error": str(e)})
+                    return
+            return
+
         self.database.update_download(download_id, status="error", error_msg=error_msg, speed=0)
         self.notify("download_error", {"download_id": download_id, "error": error_msg})
 

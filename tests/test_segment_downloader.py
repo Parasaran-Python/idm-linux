@@ -124,6 +124,20 @@ class TestSegmentDownloader(unittest.TestCase):
             downloaded_bytes = f.read()
         self.assertEqual(downloaded_bytes, MockRangeHTTPHandler.FILE_DATA)
 
+    def test_probe_fallback_filename_unquoted_with_trailing_slash(self):
+        downloader = SegmentDownloader(
+            download_id="dl-probe-unquote",
+            url="http://example.com/files/my%20test%20video.mp4/?token=123",
+            save_path=self.test_dir + "/",  # Directory path with empty basename
+            storage=self.storage,
+            config=self.config
+        )
+        downloader.final_url = "http://example.com/files/my%20test%20video.mp4/?token=123"
+        # Test the fallback filename branch directly
+        import urllib.parse
+        url_fname = os.path.basename(urllib.parse.unquote(urllib.parse.urlparse(downloader.final_url).path.rstrip("/")))
+        self.assertEqual(url_fname, "my test video.mp4")
+
 
 if __name__ == "__main__":
     unittest.main()

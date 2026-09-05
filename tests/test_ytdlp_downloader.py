@@ -241,6 +241,104 @@ class TestYTDLPDownloader(unittest.TestCase):
             downloader._resolve_initial_size_if_needed()
             self.assertEqual(downloader.total_bytes, 55000000)
 
+    def test_direct_media_url_detection(self):
+        # Direct video files
+        r34_url = "https://rule34video.com/get_file/47/9606faad41621e6d9ddc5707bcfd176c/3461000/3461901/3461901_720p.mp4/?v-acctoken=abc&rnd=123"
+        mp4_url = "https://example.com/videos/test.mp4"
+        webm_url = "https://example.com/videos/clip.webm?token=xyz"
+        mp3_url = "https://example.com/audio/song.mp3"
+        query_mp4_url = "https://cdn.example.com/download.php?file=video.mp4&id=42"
+        dropbox_url = "https://dropbox.com/s/12345/video.mp4"
+        watches_url = "https://example.com/watches/review.mp4"
+        encoded_url = "https://example.com/my%20videos/sample%20clip.mp4"
+
+        # Non-direct URLs (webpages and stream manifests)
+        yt_url = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+        vimeo_url = "https://vimeo.com/76979871"
+        hls_url = "https://example.com/stream.m3u8"
+        dash_url = "https://example.com/manifest.mpd"
+        webpage_video_url = "https://example.com/video/12345"
+
+        self.assertTrue(YTDLPDownloader.is_direct_media_url(r34_url))
+        self.assertTrue(YTDLPDownloader.is_direct_media_url(mp4_url))
+        self.assertTrue(YTDLPDownloader.is_direct_media_url(webm_url))
+        self.assertTrue(YTDLPDownloader.is_direct_media_url(mp3_url))
+        self.assertTrue(YTDLPDownloader.is_direct_media_url(dropbox_url))
+        self.assertTrue(YTDLPDownloader.is_direct_media_url(watches_url))
+        self.assertTrue(YTDLPDownloader.is_direct_media_url(encoded_url))
+
+        # PHP script, platforms, manifests, and watch pages are not direct media URLs
+        self.assertFalse(YTDLPDownloader.is_direct_media_url(query_mp4_url))
+        self.assertFalse(YTDLPDownloader.is_direct_media_url(yt_url))
+        self.assertFalse(YTDLPDownloader.is_direct_media_url(vimeo_url))
+        self.assertFalse(YTDLPDownloader.is_direct_media_url(hls_url))
+        self.assertFalse(YTDLPDownloader.is_direct_media_url(dash_url))
+        self.assertFalse(YTDLPDownloader.is_direct_media_url(webpage_video_url))
+
+    def test_platform_url_domain_isolation(self):
+        # Must not falsely match domains like dropbox.com, sandbox.com, or inbox.com as x.com
+        self.assertFalse(YTDLPDownloader.is_video_platform_url("https://dropbox.com/s/123/file.mp4"))
+        self.assertFalse(YTDLPDownloader.is_video_platform_url("https://sandbox.com/test"))
+        self.assertFalse(YTDLPDownloader.is_video_platform_url("https://inbox.com/mail"))
+        self.assertFalse(YTDLPDownloader.is_video_platform_url("https://notyoutube.com/v/123"))
+
+        # Valid video platforms
+        self.assertTrue(YTDLPDownloader.is_video_platform_url("https://x.com/user/status/123"))
+        self.assertTrue(YTDLPDownloader.is_video_platform_url("https://twitter.com/user/status/123"))
+        self.assertTrue(YTDLPDownloader.is_video_platform_url("https://www.youtube.com/watch?v=123"))
+        self.assertTrue(YTDLPDownloader.is_video_platform_url("https://m.youtube.com/watch?v=123"))
+        self.assertTrue(YTDLPDownloader.is_video_platform_url("https://youtu.be/123"))
+
+    def test_compat_options_in_ytdlp_invocations(self):
+        with unittest.mock.patch("subprocess.Popen") as mock_popen, \
+             unittest.mock.patch.object(YTDLPDownloader, "is_ytdlp_available", return_value=True), \
+             unittest.mock.patch("idm_core.ytdlp_downloader.resolve_binary", return_value="/usr/bin/yt-dlp"):
+            proc = unittest.mock.MagicMock()
+            proc.stdout = []
+            proc.wait.return_value = None
+            proc.returncode = 0
+            mock_popen.return_value = proc
+
+            dl = YTDLPDownloader("dl1", "https://youtube.com/watch?v=1", "/tmp/out.mp4")
+            dl._run_ytdlp()
+
+            self.assertTrue(mock_popen.called)
+            cmd = mock_popen.call_args[0][0]
+            self.assertEqual(cmd.count("--compat-options"), 1)
+            self.assertEqual(cmd.count("--remote-components"), 1)
+            idx = cmd.index("--compat-options")
+            self.assertEqual(cmd[idx + 1], "allow-unsafe-ext")
+
+            with unittest.mock.patch("subprocess.run") as mock_run:
+                mock_run.return_value = unittest.mock.MagicMock(returncode=0, stdout='{"title": "test"}')
+                YTDLPDownloader.extract_media_formats("https://youtube.com/watch?v=1")
+                extract_cmd = mock_run.call_args[0][0]
+                self.assertEqual(extract_cmd.count("--remote-components"), 1)
+                self.assertEqual(extract_cmd.count("--compat-options"), 1)
+
+                YTDLPDownloader.probe_media_info("https://youtube.com/watch?v=1")
+                probe_cmd = mock_run.call_args[0][0]
+                self.assertEqual(probe_cmd.count("--remote-components"), 1)
+                self.assertEqual(probe_cmd.count("--compat-options"), 1)
+
+    def test_legacy_youtubedl_omits_unsupported_flags(self):
+        with unittest.mock.patch("subprocess.Popen") as mock_popen, \
+             unittest.mock.patch.object(YTDLPDownloader, "is_ytdlp_available", return_value=True), \
+             unittest.mock.patch("idm_core.ytdlp_downloader.resolve_binary", return_value="/usr/bin/youtube-dl"):
+            proc = unittest.mock.MagicMock()
+            proc.stdout = []
+            proc.wait.return_value = None
+            proc.returncode = 0
+            mock_popen.return_value = proc
+
+            dl = YTDLPDownloader("dl2", "https://youtube.com/watch?v=1", "/tmp/out.mp4")
+            dl._run_ytdlp()
+
+            self.assertTrue(mock_popen.called)
+            cmd = mock_popen.call_args[0][0]
+            self.assertNotIn("--compat-options", cmd)
+            self.assertNotIn("--remote-components", cmd)
+
 
     def test_acodec_priority_prefers_aac_over_opus(self):
         aac_score = YTDLPDownloader._get_acodec_priority("mp4a.40.2")

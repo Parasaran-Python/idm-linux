@@ -128,7 +128,7 @@ class SegmentDownloader:
                         info["filename"] = fname
                         self.filename = fname
                 elif not os.path.basename(self.save_path):
-                    url_fname = os.path.basename(urllib.parse.urlparse(self.final_url).path)
+                    url_fname = os.path.basename(urllib.parse.unquote(urllib.parse.urlparse(self.final_url).path.rstrip("/")))
                     if url_fname:
                         info["filename"] = url_fname
                         self.filename = url_fname

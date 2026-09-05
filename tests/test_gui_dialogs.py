@@ -55,6 +55,37 @@ class TestGUIDialogs(unittest.TestCase):
         urls = dialog.get_urls()
         self.assertEqual(len(urls), 2)
 
+    def test_probe_worker_direct_media_skips_ytdlp(self):
+        from idm_gui.dialogs.download_info_dialog import ProbeWorker
+        from idm_core.ytdlp_downloader import YTDLPDownloader
+        import unittest.mock
+
+        worker = ProbeWorker(
+            url="https://example.com/get_file/3461901_720p.mp4/?v-acctoken=abc",
+            headers={"quality": "best"}
+        )
+        with unittest.mock.patch.object(YTDLPDownloader, "probe_media_info") as mock_probe:
+            mock_resp = unittest.mock.MagicMock()
+            mock_resp.headers = {"Content-Length": "2313811557", "Content-Disposition": 'filename="3461901_720p.mp4"'}
+            mock_resp.__enter__.return_value = mock_resp
+            with unittest.mock.patch("urllib.request.urlopen", return_value=mock_resp):
+                worker._run()
+                mock_probe.assert_not_called()
+
+    def test_probe_worker_platform_media_uses_ytdlp(self):
+        from idm_gui.dialogs.download_info_dialog import ProbeWorker
+        from idm_core.ytdlp_downloader import YTDLPDownloader
+        import unittest.mock
+
+        worker = ProbeWorker(
+            url="https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+            headers={"quality": "1080"}
+        )
+        with unittest.mock.patch.object(YTDLPDownloader, "is_ytdlp_available", return_value=True), \
+             unittest.mock.patch.object(YTDLPDownloader, "probe_media_info", return_value={"filesize": 1000, "filename": "video.mp4"}) as mock_probe:
+            worker._run()
+            mock_probe.assert_called_once_with("https://www.youtube.com/watch?v=dQw4w9WgXcQ", quality="1080")
+
     def test_probe_worker_normalizes_videoplayback_url(self):
         from idm_gui.dialogs.download_info_dialog import ProbeWorker
         from idm_core.utils import normalize_youtube_videoplayback_url

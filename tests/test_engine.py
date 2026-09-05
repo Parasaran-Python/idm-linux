@@ -117,6 +117,215 @@ class TestDownloadEngine(unittest.TestCase):
         self.assertTrue(queue_state["is_active"])
         self.engine.stop_queue(q_id)
 
+    def test_direct_mp4_download_routes_to_segment_downloader_even_with_quality(self):
+        from idm_core.segment_downloader import SegmentDownloader
+        from idm_core.ytdlp_downloader import YTDLPDownloader
+
+        mp4_url = f"http://127.0.0.1:{self.port}/get_file/video_720p.mp4/?token=abc"
+        dl_id = self.engine.add_download(
+            url=mp4_url,
+            headers={"quality": "best"},
+            start_immediately=False
+        )
+
+        with unittest.mock.patch.object(YTDLPDownloader, "is_ytdlp_available", return_value=True):
+            self.engine.start_download(dl_id)
+            active = self.engine.active_downloaders.get(dl_id)
+            self.assertIsInstance(active, SegmentDownloader)
+            self.assertNotIsInstance(active, YTDLPDownloader)
+
+    def test_ytdlp_downloader_fallback_to_segment_downloader(self):
+        from idm_core.segment_downloader import SegmentDownloader
+        from idm_core.ytdlp_downloader import YTDLPDownloader
+
+        class StubYTDLPDownloader(YTDLPDownloader):
+            def __init__(self, download_id: str, url: str, save_path: str):
+                self.download_id = download_id
+                self.url = url
+                self.save_path = save_path
+                self.status = "downloading"
+                self.downloaded_bytes = 0
+                self.total_bytes = 0
+            def start(self): pass
+            def pause(self): self.status = "paused"
+            def cancel(self): self.status = "cancelled"
+
+        url = f"http://127.0.0.1:{self.port}/package.zip"
+        dl_id = self.engine.add_download(url=url, start_immediately=False)
+
+        fake_ytdlp = StubYTDLPDownloader(dl_id, url, os.path.join(self.test_dir, "pkg.zip"))
+        self.engine.active_downloaders[dl_id] = fake_ytdlp
+
+        with unittest.mock.patch.object(SegmentDownloader, "start"):
+            self.engine._on_error_callback(dl_id, "ERROR: The extracted extension ('php') is unusual")
+
+        active = self.engine.active_downloaders.get(dl_id)
+        self.assertIsInstance(active, SegmentDownloader)
+
+    def test_ytdlp_downloader_fallback_does_not_revive_paused_download(self):
+        from idm_core.ytdlp_downloader import YTDLPDownloader
+
+        class StubYTDLPDownloader(YTDLPDownloader):
+            def __init__(self, download_id: str, url: str, save_path: str):
+                self.download_id = download_id
+                self.url = url
+                self.save_path = save_path
+                self.status = "downloading"
+                self.downloaded_bytes = 0
+                self.total_bytes = 0
+            def start(self): pass
+            def pause(self): self.status = "paused"
+            def cancel(self): self.status = "cancelled"
+
+        url = f"http://127.0.0.1:{self.port}/package.zip"
+        dl_id = self.engine.add_download(url=url, start_immediately=False)
+
+        fake_ytdlp = StubYTDLPDownloader(dl_id, url, os.path.join(self.test_dir, "pkg.zip"))
+        self.engine.active_downloaders[dl_id] = fake_ytdlp
+
+        # Simulate user pausing before error callback runs
+        self.engine.database.update_download(dl_id, status="paused")
+
+        self.engine._on_error_callback(dl_id, "ERROR: connection closed")
+
+        # Must not have revived the download in active_downloaders
+        active = self.engine.active_downloaders.get(dl_id)
+        self.assertIsNone(active)
+
+    def test_start_download_with_null_headers(self):
+        from idm_core.segment_downloader import SegmentDownloader
+
+        url = f"http://127.0.0.1:{self.port}/package.zip"
+        dl_id = self.engine.add_download(url=url, start_immediately=False)
+
+        # Manually set headers to None in record
+        with unittest.mock.patch.object(self.engine.database, "get_download") as mock_get:
+            mock_get.return_value = {
+                "id": dl_id,
+                "url": url,
+                "save_path": os.path.join(self.test_dir, "pkg.zip"),
+                "headers": None,
+                "connections_count": 4,
+                "total_bytes": 0,
+            }
+            # Should not raise AttributeError: 'NoneType' object has no attribute 'get'
+            self.engine.start_download(dl_id)
+            active = self.engine.active_downloaders.get(dl_id)
+            self.assertIsInstance(active, SegmentDownloader)
+
+    def test_ytdlp_downloader_fallback_handles_start_exception(self):
+        from idm_core.segment_downloader import SegmentDownloader
+        from idm_core.ytdlp_downloader import YTDLPDownloader
+
+        class StubYTDLPDownloader(YTDLPDownloader):
+            def __init__(self, download_id: str, url: str, save_path: str):
+                self.download_id = download_id
+                self.url = url
+                self.save_path = save_path
+                self.status = "downloading"
+                self.downloaded_bytes = 0
+                self.total_bytes = 0
+            def start(self): pass
+            def pause(self): self.status = "paused"
+            def cancel(self): self.status = "cancelled"
+
+        url = f"http://127.0.0.1:{self.port}/package.zip"
+        dl_id = self.engine.add_download(url=url, start_immediately=False)
+
+        fake_ytdlp = StubYTDLPDownloader(dl_id, url, os.path.join(self.test_dir, "pkg.zip"))
+        self.engine.active_downloaders[dl_id] = fake_ytdlp
+
+        with unittest.mock.patch.object(SegmentDownloader, "start", side_effect=RuntimeError("Spawn failed")):
+            self.engine._on_error_callback(dl_id, "YTDLP failed")
+
+        active = self.engine.active_downloaders.get(dl_id)
+        self.assertIsNone(active)
+        rec = self.engine.database.get_download(dl_id)
+        self.assertEqual(rec["status"], "error")
+        self.assertIn("Spawn failed", rec["error_msg"])
+
+    def test_add_download_infers_filename_with_trailing_slash(self):
+        url = "https://example.com/get_file/123/sample%20video%20clip.mp4/?token=abc"
+        dl_id = self.engine.add_download(url=url, start_immediately=False)
+        rec = self.engine.database.get_download(dl_id)
+        self.assertEqual(rec["filename"], "sample video clip.mp4")
+
+    def test_ytdlp_downloader_fallback_avoids_overwriting_paused_status_on_start_error(self):
+        from idm_core.segment_downloader import SegmentDownloader
+        from idm_core.ytdlp_downloader import YTDLPDownloader
+
+        class StubYTDLPDownloader(YTDLPDownloader):
+            def __init__(self, download_id: str, url: str, save_path: str):
+                self.download_id = download_id
+                self.url = url
+                self.save_path = save_path
+                self.status = "downloading"
+                self.downloaded_bytes = 0
+                self.total_bytes = 0
+            def start(self): pass
+            def pause(self): self.status = "paused"
+            def cancel(self): self.status = "cancelled"
+
+        url = f"http://127.0.0.1:{self.port}/package.zip"
+        dl_id = self.engine.add_download(url=url, start_immediately=False)
+
+        fake_ytdlp = StubYTDLPDownloader(dl_id, url, os.path.join(self.test_dir, "pkg.zip"))
+        self.engine.active_downloaders[dl_id] = fake_ytdlp
+
+        def pause_and_raise():
+            self.engine.pause_download(dl_id)
+            raise RuntimeError("Connection dropped during start")
+
+        with unittest.mock.patch.object(SegmentDownloader, "start", side_effect=pause_and_raise):
+            self.engine._on_error_callback(dl_id, "YTDLP failed")
+
+        rec = self.engine.database.get_download(dl_id)
+        self.assertEqual(rec["status"], "paused")
+        self.assertNotIn("Connection dropped during start", rec.get("error_msg", ""))
+
+    def test_ytdlp_downloader_fallback_triggers_on_unusual_extension_with_partial_bytes(self):
+        from idm_core.segment_downloader import SegmentDownloader
+        from idm_core.ytdlp_downloader import YTDLPDownloader
+
+        class StubYTDLPDownloader(YTDLPDownloader):
+            def __init__(self, download_id: str, url: str, save_path: str):
+                self.download_id = download_id
+                self.url = url
+                self.save_path = save_path
+                self.status = "downloading"
+                self.downloaded_bytes = 0
+                self.total_bytes = 0
+            def start(self): pass
+            def pause(self): self.status = "paused"
+            def cancel(self): self.status = "cancelled"
+
+        url = f"http://127.0.0.1:{self.port}/package.zip"
+        dl_id = self.engine.add_download(url=url, start_immediately=False)
+        self.engine.database.update_download(dl_id, downloaded_bytes=1024)
+
+        fake_ytdlp = StubYTDLPDownloader(dl_id, url, os.path.join(self.test_dir, "pkg.zip"))
+        self.engine.active_downloaders[dl_id] = fake_ytdlp
+
+        with unittest.mock.patch.object(SegmentDownloader, "start"):
+            self.engine._on_error_callback(
+                dl_id,
+                "ERROR: The extracted extension ('php') is unusual and will be skipped for safety reasons"
+            )
+
+        active = self.engine.active_downloaders.get(dl_id)
+        self.assertIsInstance(active, SegmentDownloader)
+
+    def test_extensionless_url_routes_to_segment_downloader(self):
+        from idm_core.segment_downloader import SegmentDownloader
+
+        url = "https://cdn.example.com/video/12345"
+        dl_id = self.engine.add_download(url=url, start_immediately=False)
+
+        with unittest.mock.patch.object(SegmentDownloader, "start"):
+            self.engine.start_download(dl_id)
+            active = self.engine.active_downloaders.get(dl_id)
+            self.assertIsInstance(active, SegmentDownloader)
+
     def test_add_download_normalizes_videoplayback_url_with_youtube_referer(self):
         raw_dash_url = "https://rr1---sn-4g5ednsl.googlevideo.com/videoplayback?expire=12345&mime=video%2Fmp4"
         yt_watch_url = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
