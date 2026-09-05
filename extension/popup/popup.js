@@ -210,13 +210,16 @@ document.addEventListener("DOMContentLoaded", () => {
               `;
               row.addEventListener("click", () => {
                 const title = activeTab.title ? activeTab.title.replace(/[\\/:*?"<>|]/g, "_").trim() : "video";
-                const ext = item.badge.toLowerCase() === "hls" || item.badge.toLowerCase() === "dash" || item.badge.toLowerCase() === "youtube" ? "mp4" : item.badge.toLowerCase();
+                const badgeLow = item.badge.toLowerCase();
+                const isStreamOrPlatform = badgeLow === "hls" || badgeLow === "dash" || badgeLow === "youtube";
+                const ext = isStreamOrPlatform ? "mp4" : badgeLow;
+                const quality = isStreamOrPlatform ? "best" : null;
                 chrome.runtime.sendMessage({
                   action: "download_media",
                   url: item.url,
                   page_url: activeTab.url || "",
                   filename: `${title}.${ext}`,
-                  quality: "best"
+                  quality: quality
                 }, () => {
                   if (chrome.runtime.lastError) { /* ignore */ }
                   window.close();

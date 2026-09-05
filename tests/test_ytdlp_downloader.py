@@ -248,6 +248,9 @@ class TestYTDLPDownloader(unittest.TestCase):
         webm_url = "https://example.com/videos/clip.webm?token=xyz"
         mp3_url = "https://example.com/audio/song.mp3"
         query_mp4_url = "https://cdn.example.com/download.php?file=video.mp4&id=42"
+        dropbox_url = "https://dropbox.com/s/12345/video.mp4"
+        watches_url = "https://example.com/watches/review.mp4"
+        encoded_url = "https://example.com/my%20videos/sample%20clip.mp4"
 
         # Non-direct URLs (webpages and stream manifests)
         yt_url = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
@@ -260,6 +263,9 @@ class TestYTDLPDownloader(unittest.TestCase):
         self.assertTrue(YTDLPDownloader.is_direct_media_url(mp4_url))
         self.assertTrue(YTDLPDownloader.is_direct_media_url(webm_url))
         self.assertTrue(YTDLPDownloader.is_direct_media_url(mp3_url))
+        self.assertTrue(YTDLPDownloader.is_direct_media_url(dropbox_url))
+        self.assertTrue(YTDLPDownloader.is_direct_media_url(watches_url))
+        self.assertTrue(YTDLPDownloader.is_direct_media_url(encoded_url))
 
         # PHP script, platforms, manifests, and watch pages are not direct media URLs
         self.assertFalse(YTDLPDownloader.is_direct_media_url(query_mp4_url))
@@ -268,6 +274,20 @@ class TestYTDLPDownloader(unittest.TestCase):
         self.assertFalse(YTDLPDownloader.is_direct_media_url(hls_url))
         self.assertFalse(YTDLPDownloader.is_direct_media_url(dash_url))
         self.assertFalse(YTDLPDownloader.is_direct_media_url(webpage_video_url))
+
+    def test_platform_url_domain_isolation(self):
+        # Must not falsely match domains like dropbox.com, sandbox.com, or inbox.com as x.com
+        self.assertFalse(YTDLPDownloader.is_video_platform_url("https://dropbox.com/s/123/file.mp4"))
+        self.assertFalse(YTDLPDownloader.is_video_platform_url("https://sandbox.com/test"))
+        self.assertFalse(YTDLPDownloader.is_video_platform_url("https://inbox.com/mail"))
+        self.assertFalse(YTDLPDownloader.is_video_platform_url("https://notyoutube.com/v/123"))
+
+        # Valid video platforms
+        self.assertTrue(YTDLPDownloader.is_video_platform_url("https://x.com/user/status/123"))
+        self.assertTrue(YTDLPDownloader.is_video_platform_url("https://twitter.com/user/status/123"))
+        self.assertTrue(YTDLPDownloader.is_video_platform_url("https://www.youtube.com/watch?v=123"))
+        self.assertTrue(YTDLPDownloader.is_video_platform_url("https://m.youtube.com/watch?v=123"))
+        self.assertTrue(YTDLPDownloader.is_video_platform_url("https://youtu.be/123"))
 
     def test_compat_options_in_ytdlp_invocations(self):
         with unittest.mock.patch("subprocess.Popen") as mock_popen, \

@@ -82,8 +82,8 @@ class YTDLPDownloader:
             return False
         try:
             parsed = urllib.parse.urlparse(url)
-            clean_path = parsed.path.rstrip("/")
-            if clean_path.startswith(("/watch", "/shorts", "/live")):
+            clean_path = urllib.parse.unquote(parsed.path.rstrip("/ \t"))
+            if clean_path == "/watch" or clean_path.startswith(("/watch/", "/shorts/", "/live/")):
                 return False
             ext = os.path.splitext(clean_path)[1].lower()
             return ext in cls.DIRECT_MEDIA_EXTS
@@ -93,14 +93,19 @@ class YTDLPDownloader:
     @staticmethod
     def is_video_platform_url(url: str) -> bool:
         """Check if URL points to a known streaming video platform."""
-        lower = url.lower()
-        domains = [
-            "youtube.com", "youtu.be", "vimeo.com", "dailymotion.com",
-            "twitch.tv", "tiktok.com", "twitter.com", "x.com",
-            "facebook.com", "fb.watch", "instagram.com", "reddit.com",
-            "soundcloud.com", "bilibili.com"
-        ]
-        return any(d in lower for d in domains)
+        if not url:
+            return False
+        try:
+            host = (urllib.parse.urlparse(url).hostname or "").lower()
+            domains = (
+                "youtube.com", "youtu.be", "vimeo.com", "dailymotion.com",
+                "twitch.tv", "tiktok.com", "twitter.com", "x.com",
+                "facebook.com", "fb.watch", "instagram.com", "reddit.com",
+                "soundcloud.com", "bilibili.com"
+            )
+            return any(host == d or host.endswith("." + d) for d in domains)
+        except Exception:
+            return False
 
     @classmethod
     def _get_js_runtime_args(cls) -> List[str]:
@@ -125,7 +130,7 @@ class YTDLPDownloader:
         if not cls.is_ytdlp_available() or not url:
             return []
 
-        bin_name = "yt-dlp" if shutil.which("yt-dlp") else "youtube-dl"
+        bin_name = resolve_binary("yt-dlp") or resolve_binary("youtube-dl") or "yt-dlp"
         cmd = [
             bin_name,
             "-J",

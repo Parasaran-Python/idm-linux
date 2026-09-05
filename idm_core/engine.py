@@ -74,7 +74,7 @@ class DownloadEngine:
         
         # Inferred filename
         if not filename:
-            path_part = urllib.parse.urlparse(url).path
+            path_part = urllib.parse.urlparse(url).path.rstrip("/")
             filename = os.path.basename(path_part) or "download"
             if filename.endswith(".m3u8") or filename.endswith(".mpd"):
                 filename = os.path.splitext(filename)[0] + ".mp4"
@@ -140,6 +140,7 @@ class DownloadEngine:
             is_platform_video = not is_stream and not is_direct_media and YTDLPDownloader.is_ytdlp_available() and (
                 YTDLPDownloader.is_video_platform_url(url)
                 or bool(headers.get("quality"))
+                or url.endswith("/watch")
                 or "/watch?" in url
                 or "/watch/" in url
                 or "/shorts/" in url
@@ -384,6 +385,7 @@ class DownloadEngine:
             if still_active:
                 try:
                     seg_downloader.start()
+                    self.notify("download_started", {"download_id": download_id})
                     return
                 except Exception as e:
                     with self._lock:

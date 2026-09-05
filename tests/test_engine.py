@@ -207,6 +207,12 @@ class TestDownloadEngine(unittest.TestCase):
         self.assertEqual(rec["status"], "error")
         self.assertIn("Spawn failed", rec["error_msg"])
 
+    def test_add_download_infers_filename_with_trailing_slash(self):
+        url = "https://example.com/get_file/123/sample_video.mp4/?token=abc"
+        dl_id = self.engine.add_download(url=url, start_immediately=False)
+        rec = self.engine.database.get_download(dl_id)
+        self.assertEqual(rec["filename"], "sample_video.mp4")
+
 
 if __name__ == "__main__":
     unittest.main()
