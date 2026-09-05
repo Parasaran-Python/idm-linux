@@ -43,7 +43,7 @@ class ProbeWorker(QObject):
 
             # Resolve raw Google Video DASH chunk to full YouTube video URL if referer is available
             referer = self.headers.get("Referer") or self.headers.get("referer") or self.headers.get("page_url", "")
-            is_yt_video_referer = any(x in referer for x in ["/watch", "/shorts", "/live", "/embed", "youtu.be"])
+            is_yt_video_referer = ("youtube.com" in referer or "youtu.be" in referer) and any(x in referer for x in ["/watch", "/shorts", "/live", "/embed", "youtu.be"])
             if ("videoplayback" in self.url or "googlevideo.com" in self.url) and is_yt_video_referer:
                 self.url = referer
 
@@ -135,6 +135,13 @@ class DownloadInfoDialog(QDialog):
         self.file_size = file_size
         self.probe_worker: Optional[ProbeWorker] = None
 
+        referer = self.headers.get("Referer") or self.headers.get("referer") or self.headers.get("page_url", "")
+        is_yt_video_referer = ("youtube.com" in referer or "youtu.be" in referer) and any(x in referer for x in ["/watch", "/shorts", "/live", "/embed", "youtu.be"])
+        if ("videoplayback" in url or "googlevideo.com" in url) and is_yt_video_referer:
+            url = referer
+            if not filename or filename.startswith("videoplayback") or filename in ["download", "watch"]:
+                filename = ""
+
         self._setup_ui(url, filename, save_path, category, file_size)
 
         if self.file_size <= 0 and url:
@@ -155,6 +162,12 @@ class DownloadInfoDialog(QDialog):
             cur_fn = os.path.basename(cur_path)
             if not cur_fn or cur_fn in ["download", "videoplayback", "stream"]:
                 self.save_edit.setText(os.path.join(cur_dir, filename))
+            if hasattr(self, "category_combo") and self.category_combo.currentText() == "General":
+                lower_fn = filename.lower()
+                if lower_fn.endswith((".mp4", ".webm", ".mkv", ".mov", ".avi", ".flv")):
+                    self.category_combo.setCurrentText("Video")
+                elif lower_fn.endswith((".mp3", ".m4a", ".aac", ".flac", ".wav", ".ogg")):
+                    self.category_combo.setCurrentText("Music")
 
     def _setup_ui(self, url: str, filename: str, save_path: str, category: str, file_size: int):
         layout = QVBoxLayout(self)

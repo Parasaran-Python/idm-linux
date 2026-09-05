@@ -159,6 +159,24 @@ class TestDownloadEngine(unittest.TestCase):
         self.assertEqual(info3["filename"], "dQw4w9WgXcQ.mp4")
         self.assertEqual(info3["category"], "Video")
 
+    def test_add_download_does_not_alter_non_youtube_urls_with_live_or_embed_paths(self):
+        non_yt_url = "https://example.com/live/archive.tar.gz"
+        dl_id = self.engine.add_download(url=non_yt_url, start_immediately=False)
+        info = self.engine.get_download_info(dl_id)
+        self.assertEqual(info["filename"], "archive.tar.gz")
+        self.assertEqual(info["category"], "Compressed")
+
+    def test_add_download_does_not_normalize_non_youtube_referer(self):
+        raw_dash_url = "https://rr1---sn-4g5ednsl.googlevideo.com/videoplayback?expire=12345&mime=video%2Fmp4"
+        non_yt_referer = "https://example.com/watch?v=12345"
+        dl_id = self.engine.add_download(
+            url=raw_dash_url,
+            headers={"Referer": non_yt_referer},
+            start_immediately=False
+        )
+        info = self.engine.get_download_info(dl_id)
+        self.assertEqual(info["url"], raw_dash_url, "Non-YouTube referer must NOT rewrite videoplayback URL")
+
 
 if __name__ == "__main__":
     unittest.main()

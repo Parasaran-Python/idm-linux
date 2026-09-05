@@ -62,10 +62,34 @@ class TestGUIDialogs(unittest.TestCase):
             headers={"Referer": "https://www.youtube.com/watch?v=dQw4w9WgXcQ"}
         )
         referer = worker.headers.get("Referer", "")
-        is_yt_video_referer = any(x in referer for x in ["/watch", "/shorts", "/live", "/embed", "youtu.be"])
+        is_yt_video_referer = ("youtube.com" in referer or "youtu.be" in referer) and any(x in referer for x in ["/watch", "/shorts", "/live", "/embed", "youtu.be"])
         if ("videoplayback" in worker.url or "googlevideo.com" in worker.url) and is_yt_video_referer:
             worker.url = referer
         self.assertEqual(worker.url, "https://www.youtube.com/watch?v=dQw4w9WgXcQ")
+
+        # Non-youtube referer should not normalize
+        worker2 = ProbeWorker(
+            url="https://rr1---sn-4g5ednsl.googlevideo.com/videoplayback?expire=12345",
+            headers={"Referer": "https://example.com/watch?v=123"}
+        )
+        referer2 = worker2.headers.get("Referer", "")
+        is_yt_video_referer2 = ("youtube.com" in referer2 or "youtu.be" in referer2) and any(x in referer2 for x in ["/watch", "/shorts", "/live", "/embed", "youtu.be"])
+        if ("videoplayback" in worker2.url or "googlevideo.com" in worker2.url) and is_yt_video_referer2:
+            worker2.url = referer2
+        self.assertEqual(worker2.url, "https://rr1---sn-4g5ednsl.googlevideo.com/videoplayback?expire=12345")
+
+    def test_download_info_dialog_normalizes_videoplayback_url(self):
+        dialog = DownloadInfoDialog(
+            url="https://rr1---sn-4g5ednsl.googlevideo.com/videoplayback?expire=12345",
+            headers={"Referer": "https://www.youtube.com/watch?v=dQw4w9WgXcQ"},
+            category="General"
+        )
+        self.assertEqual(dialog.url_edit.text(), "https://www.youtube.com/watch?v=dQw4w9WgXcQ")
+        
+        # Test category auto-update in _on_probed
+        dialog._on_probed(10485760, "MyVideo.mp4")
+        self.assertEqual(dialog.category_combo.currentText(), "Video")
+        self.assertIn("MyVideo.mp4", dialog.save_edit.text())
 
 
 if __name__ == "__main__":

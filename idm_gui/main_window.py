@@ -257,7 +257,7 @@ class MainWindow(QMainWindow):
 
             # Resolve raw Google Video DASH chunk to full YouTube video URL if referer is available
             referer = headers.get("Referer") or headers.get("referer") or headers.get("page_url", "")
-            is_yt_video_referer = any(x in referer for x in ["/watch", "/shorts", "/live", "/embed", "youtu.be"])
+            is_yt_video_referer = ("youtube.com" in referer or "youtu.be" in referer) and any(x in referer for x in ["/watch", "/shorts", "/live", "/embed", "youtu.be"])
             if ("videoplayback" in url or "googlevideo.com" in url) and is_yt_video_referer:
                 url = referer
                 if not raw_filename or raw_filename.startswith("videoplayback") or raw_filename in ["download", "watch"]:

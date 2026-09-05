@@ -124,7 +124,7 @@ class IPCServer:
 
                 headers = msg.get("headers") or {}
                 referer = headers.get("Referer") or headers.get("referer") or headers.get("page_url", "")
-                is_yt_video_referer = any(x in referer for x in ["/watch", "/shorts", "/live", "/embed", "youtu.be"])
+                is_yt_video_referer = ("youtube.com" in referer or "youtu.be" in referer) and any(x in referer for x in ["/watch", "/shorts", "/live", "/embed", "youtu.be"])
                 if ("videoplayback" in url or "googlevideo.com" in url) and is_yt_video_referer:
                     url = referer
                     msg["url"] = referer
