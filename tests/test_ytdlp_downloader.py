@@ -309,6 +309,18 @@ class TestYTDLPDownloader(unittest.TestCase):
             idx = cmd.index("--compat-options")
             self.assertEqual(cmd[idx + 1], "allow-unsafe-ext")
 
+            with unittest.mock.patch("subprocess.run") as mock_run:
+                mock_run.return_value = unittest.mock.MagicMock(returncode=0, stdout='{"title": "test"}')
+                YTDLPDownloader.extract_media_formats("https://youtube.com/watch?v=1")
+                extract_cmd = mock_run.call_args[0][0]
+                self.assertEqual(extract_cmd.count("--remote-components"), 1)
+                self.assertEqual(extract_cmd.count("--compat-options"), 1)
+
+                YTDLPDownloader.probe_media_info("https://youtube.com/watch?v=1")
+                probe_cmd = mock_run.call_args[0][0]
+                self.assertEqual(probe_cmd.count("--remote-components"), 1)
+                self.assertEqual(probe_cmd.count("--compat-options"), 1)
+
     def test_legacy_youtubedl_omits_unsupported_flags(self):
         with unittest.mock.patch("subprocess.Popen") as mock_popen, \
              unittest.mock.patch.object(YTDLPDownloader, "is_ytdlp_available", return_value=True), \

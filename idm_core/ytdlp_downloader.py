@@ -4,7 +4,7 @@ Handles downloading from YouTube, Vimeo, Dailymotion, Reddit, Twitter/X, Twitch,
 """
 
 import json
-import os  # Required for path and extension parsing
+import os
 import re
 import shutil
 import subprocess
