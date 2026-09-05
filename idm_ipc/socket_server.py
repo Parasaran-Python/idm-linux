@@ -122,6 +122,16 @@ class IPCServer:
                 if not url:
                     return {"status": "error", "error": "URL is required"}
 
+                headers = msg.get("headers") or {}
+                referer = headers.get("Referer") or headers.get("referer") or headers.get("page_url", "")
+                is_yt_video_referer = any(x in referer for x in ["/watch", "/shorts", "/live", "/embed", "youtu.be"])
+                if ("videoplayback" in url or "googlevideo.com" in url) and is_yt_video_referer:
+                    url = referer
+                    msg["url"] = referer
+                    fn = msg.get("filename")
+                    if not fn or fn.startswith("videoplayback") or fn in ["download", "watch"]:
+                        msg["filename"] = None
+
                 # If GUI is active and show_dialog is requested (default for browser), trigger DownloadInfoDialog prompt
                 if msg.get("show_dialog", True) and "download_requested" in self.engine._listeners and self.engine._listeners["download_requested"]:
                     self.engine.notify("download_requested", msg)

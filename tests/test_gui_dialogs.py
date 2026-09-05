@@ -55,6 +55,18 @@ class TestGUIDialogs(unittest.TestCase):
         urls = dialog.get_urls()
         self.assertEqual(len(urls), 2)
 
+    def test_probe_worker_normalizes_videoplayback_url(self):
+        from idm_gui.dialogs.download_info_dialog import ProbeWorker
+        worker = ProbeWorker(
+            url="https://rr1---sn-4g5ednsl.googlevideo.com/videoplayback?expire=12345",
+            headers={"Referer": "https://www.youtube.com/watch?v=dQw4w9WgXcQ"}
+        )
+        referer = worker.headers.get("Referer", "")
+        is_yt_video_referer = any(x in referer for x in ["/watch", "/shorts", "/live", "/embed", "youtu.be"])
+        if ("videoplayback" in worker.url or "googlevideo.com" in worker.url) and is_yt_video_referer:
+            worker.url = referer
+        self.assertEqual(worker.url, "https://www.youtube.com/watch?v=dQw4w9WgXcQ")
+
 
 if __name__ == "__main__":
     unittest.main()

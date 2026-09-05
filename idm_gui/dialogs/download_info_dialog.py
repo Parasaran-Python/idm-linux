@@ -41,6 +41,12 @@ class ProbeWorker(QObject):
             if not self.url or not self.url.startswith(("http://", "https://", "ftp://")):
                 return
 
+            # Resolve raw Google Video DASH chunk to full YouTube video URL if referer is available
+            referer = self.headers.get("Referer") or self.headers.get("referer") or self.headers.get("page_url", "")
+            is_yt_video_referer = any(x in referer for x in ["/watch", "/shorts", "/live", "/embed", "youtu.be"])
+            if ("videoplayback" in self.url or "googlevideo.com" in self.url) and is_yt_video_referer:
+                self.url = referer
+
             # 1. Video Platform URLs (YouTube, Vimeo, Twitch, etc.)
             from idm_core.ytdlp_downloader import YTDLPDownloader
             if YTDLPDownloader.is_ytdlp_available() and (
