@@ -19,6 +19,7 @@ echo "========================================================"
 mkdir -p "${BIN_DIR}" "${DESKTOP_DIR}" "${ICON_DIR}"
 
 # 1. Create CLI Wrapper (`pv-idm`, `idm`, `idm-linux`)
+rm -f "${BIN_DIR}/pv-idm" "${BIN_DIR}/idm" "${BIN_DIR}/idm-linux"
 cat << EOF > "${BIN_DIR}/pv-idm"
 #!/bin/bash
 REPO_DIR="${REPO_DIR}"
@@ -31,6 +32,7 @@ ln -sf "${BIN_DIR}/pv-idm" "${BIN_DIR}/idm"
 ln -sf "${BIN_DIR}/pv-idm" "${BIN_DIR}/idm-linux"
 
 # 2. Create GUI Wrapper (`pv-idm-gui`, `idm-gui`, `idm-linux-gui`)
+rm -f "${BIN_DIR}/pv-idm-gui" "${BIN_DIR}/idm-gui" "${BIN_DIR}/idm-linux-gui"
 cat << EOF > "${BIN_DIR}/pv-idm-gui"
 #!/bin/bash
 REPO_DIR="${REPO_DIR}"
@@ -43,6 +45,7 @@ ln -sf "${BIN_DIR}/pv-idm-gui" "${BIN_DIR}/idm-gui"
 ln -sf "${BIN_DIR}/pv-idm-gui" "${BIN_DIR}/idm-linux-gui"
 
 # 3. Create Daemon Wrapper (`pv-idm-daemon`, `idm-daemon`)
+rm -f "${BIN_DIR}/pv-idm-daemon" "${BIN_DIR}/idm-daemon"
 cat << EOF > "${BIN_DIR}/pv-idm-daemon"
 #!/bin/bash
 REPO_DIR="${REPO_DIR}"
@@ -53,7 +56,19 @@ EOF
 chmod +x "${BIN_DIR}/pv-idm-daemon"
 ln -sf "${BIN_DIR}/pv-idm-daemon" "${BIN_DIR}/idm-daemon"
 
-# 4. Install Desktop File and Multi-Resolution Icons
+# 4. Create Native Host Wrapper (`pv-idm-native-host`, `idm-native-host`)
+rm -f "${BIN_DIR}/pv-idm-native-host" "${BIN_DIR}/idm-native-host"
+cat << EOF > "${BIN_DIR}/pv-idm-native-host"
+#!/bin/bash
+REPO_DIR="${REPO_DIR}"
+PYTHON_BIN="${PYTHON_BIN}"
+export PYTHONPATH="${EXTRA_PY_PATHS}:\${REPO_DIR}:\$PYTHONPATH"
+exec "\${PYTHON_BIN}" -m idm_native_host.host "\$@"
+EOF
+chmod +x "${BIN_DIR}/pv-idm-native-host"
+ln -sf "${BIN_DIR}/pv-idm-native-host" "${BIN_DIR}/idm-native-host"
+
+# 5. Install Desktop File and Multi-Resolution Icons
 for sz in 16 32 48 128 256 512; do
     target_dir="${HOME}/.local/share/icons/hicolor/${sz}x${sz}/apps"
     mkdir -p "${target_dir}"
@@ -65,12 +80,16 @@ done
 cp "${REPO_DIR}/scripts/pv-idm.desktop" "${DESKTOP_DIR}/pv-idm.desktop"
 ln -sf "${DESKTOP_DIR}/pv-idm.desktop" "${DESKTOP_DIR}/idm-linux.desktop"
 
-# 5. Register Browser Native Messaging Hosts
+# 6. Register Browser Native Messaging Hosts
 echo "[*] Registering Browser Native Messaging Hosts..."
 PYTHONPATH="${EXTRA_PY_PATHS}:${REPO_DIR}:$PYTHONPATH" \
   "${PYTHON_BIN}" "${REPO_DIR}/scripts/install_native_host.py"
 
-# 6. Update Desktop and Icon Databases if available
+# 7. Package Browser Extensions into dist/
+echo "[*] Packaging Browser Extensions..."
+"${PYTHON_BIN}" "${REPO_DIR}/scripts/package_extensions.py"
+
+# 8. Update Desktop and Icon Databases if available
 if command -v update-desktop-database >/dev/null 2>&1; then
     update-desktop-database "${DESKTOP_DIR}" 2>/dev/null || true
 fi
@@ -80,7 +99,8 @@ fi
 
 echo "========================================================"
 echo " [OK] PV-IDM Installed Successfully!"
-echo " Binaries: ${BIN_DIR}/pv-idm, ${BIN_DIR}/pv-idm-gui"
+echo " Binaries: ${BIN_DIR}/pv-idm, ${BIN_DIR}/pv-idm-gui, ${BIN_DIR}/pv-idm-daemon, ${BIN_DIR}/pv-idm-native-host"
 echo " Desktop Launcher: ${DESKTOP_DIR}/pv-idm.desktop"
-echo " Browser Extension Directory: ${REPO_DIR}/extension"
+echo " Chrome Extension: ${REPO_DIR}/dist/chrome-extension"
+echo " Firefox Extension: ${REPO_DIR}/dist/pv-idm-extension-firefox.xpi"
 echo "========================================================"

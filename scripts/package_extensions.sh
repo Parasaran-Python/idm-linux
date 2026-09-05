@@ -33,9 +33,13 @@ cp "${DIST_DIR}/pv-idm-extension-firefox.zip" "${DIST_DIR}/pv-idm-extension-fire
 cp "${DIST_DIR}/pv-idm-extension-firefox.zip" "${DIST_DIR}/idm-linux-extension-firefox.zip"
 cp "${DIST_DIR}/pv-idm-extension-firefox.xpi" "${DIST_DIR}/idm-linux-extension-firefox.xpi"
 
-rm -rf "${DIST_DIR}/chrome-extension" "${DIST_DIR}/firefox-extension"
+# Keep staging directories for unpacked extension loading and testing
+# rm -rf "${DIST_DIR}/chrome-extension" "${DIST_DIR}/firefox-extension"
 
-echo "[OK] Built:"
-echo "  - ${DIST_DIR}/pv-idm-extension-chrome-mv3.zip"
-echo "  - ${DIST_DIR}/pv-idm-extension-firefox.zip"
-echo "  - ${DIST_DIR}/pv-idm-extension-firefox.xpi"
+echo "[OK] Built packages:"
+echo "  - Chrome ZIP:  ${DIST_DIR}/pv-idm-extension-chrome-mv3.zip"
+echo "  - Firefox ZIP: ${DIST_DIR}/pv-idm-extension-firefox.zip"
+echo "  - Firefox XPI: ${DIST_DIR}/pv-idm-extension-firefox.xpi"
+echo "[OK] Unpacked directories:"
+echo "  - Chrome Unpacked:  ${DIST_DIR}/chrome-extension"
+echo "  - Firefox Unpacked: ${DIST_DIR}/firefox-extension"

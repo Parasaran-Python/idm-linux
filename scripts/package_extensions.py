@@ -73,14 +73,17 @@ def package_extensions():
     shutil.copy2(firefox_zip, os.path.join(dist_dir, "idm-linux-extension-firefox.zip"))
     shutil.copy2(firefox_xpi, os.path.join(dist_dir, "idm-linux-extension-firefox.xpi"))
 
-    # Cleanup staging directories
-    shutil.rmtree(chrome_stage, ignore_errors=True)
-    shutil.rmtree(firefox_stage, ignore_errors=True)
+    # Keep staging directories for unpacked extension loading and testing
+    # Chrome unpacked: dist/chrome-extension
+    # Firefox unpacked: dist/firefox-extension
 
-    print("[OK] Built:")
-    print(f"  - {chrome_zip}")
-    print(f"  - {firefox_zip}")
-    print(f"  - {firefox_xpi}")
+    print("[OK] Built packages:")
+    print(f"  - Chrome ZIP:  {chrome_zip}")
+    print(f"  - Firefox ZIP: {firefox_zip}")
+    print(f"  - Firefox XPI: {firefox_xpi}")
+    print("[OK] Unpacked directories:")
+    print(f"  - Chrome Unpacked:  {chrome_stage}")
+    print(f"  - Firefox Unpacked: {firefox_stage}")
 
 
 if __name__ == "__main__":
