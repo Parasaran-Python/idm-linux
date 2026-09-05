@@ -251,13 +251,11 @@ document.addEventListener("DOMContentLoaded", () => {
                   window.close();
                 });
               });
-              mediaList.appendChild(row);
-            });
-          }
-        }
-      });
-    }
-  });
+            mediaList.appendChild(row);
+          });
+        });
+      }
+    });
 
   // 5. Open Desktop Application
   btnOpenGui.addEventListener("click", () => {

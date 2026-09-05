@@ -127,7 +127,18 @@ class TestDownloadEngine(unittest.TestCase):
         )
         info = self.engine.get_download_info(dl_id)
         self.assertEqual(info["url"], yt_watch_url, "Raw videoplayback URL with YouTube Referer must be normalized to YouTube watch URL")
-        self.assertEqual(info["filename"], "video.mp4")
+        self.assertEqual(info["filename"], "dQw4w9WgXcQ.mp4")
+
+    def test_add_download_does_not_normalize_bare_youtube_origin_referer(self):
+        raw_dash_url = "https://rr1---sn-4g5ednsl.googlevideo.com/videoplayback?expire=12345&mime=video%2Fmp4"
+        bare_origin = "https://www.youtube.com/"
+        dl_id = self.engine.add_download(
+            url=raw_dash_url,
+            headers={"Referer": bare_origin},
+            start_immediately=False
+        )
+        info = self.engine.get_download_info(dl_id)
+        self.assertEqual(info["url"], raw_dash_url, "Bare YouTube origin must NOT rewrite videoplayback to YouTube homepage")
 
     def test_add_download_infers_filename_for_youtube_shorts_and_short_urls(self):
         shorts_url = "https://www.youtube.com/shorts/dQw4w9WgXcQ"
@@ -141,6 +152,12 @@ class TestDownloadEngine(unittest.TestCase):
         info2 = self.engine.get_download_info(dl_id2)
         self.assertEqual(info2["filename"], "dQw4w9WgXcQ.mp4")
         self.assertEqual(info2["category"], "Video")
+
+        embed_url = "https://www.youtube.com/embed/dQw4w9WgXcQ"
+        dl_id3 = self.engine.add_download(url=embed_url, start_immediately=False)
+        info3 = self.engine.get_download_info(dl_id3)
+        self.assertEqual(info3["filename"], "dQw4w9WgXcQ.mp4")
+        self.assertEqual(info3["category"], "Video")
 
 
 if __name__ == "__main__":
