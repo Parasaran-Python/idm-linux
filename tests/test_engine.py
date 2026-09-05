@@ -117,7 +117,6 @@ class TestDownloadEngine(unittest.TestCase):
         self.assertTrue(queue_state["is_active"])
         self.engine.stop_queue(q_id)
 
-<<<<<<< HEAD
     def test_direct_mp4_download_routes_to_segment_downloader_even_with_quality(self):
         from idm_core.segment_downloader import SegmentDownloader
         from idm_core.ytdlp_downloader import YTDLPDownloader
@@ -415,4 +414,3 @@ class TestDownloadEngine(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-
