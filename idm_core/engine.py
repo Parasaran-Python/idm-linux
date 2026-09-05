@@ -15,6 +15,7 @@ from idm_core.scheduler import Scheduler
 from idm_core.segment_downloader import SegmentDownloader
 from idm_core.storage import StorageManager
 from idm_core.stream_downloader import StreamDownloader
+from idm_core.utils import infer_youtube_filename, is_youtube_url, normalize_youtube_videoplayback_url
 from idm_core.ytdlp_downloader import YTDLPDownloader
 
 
@@ -72,12 +73,21 @@ class DownloadEngine:
         conn_count = connections or self.config.max_connections
         headers = headers or {}
         
+        # Resolve raw Google Video DASH chunk to full YouTube video URL if referer or page_url is available
+        url, inferred_yt_fn = normalize_youtube_videoplayback_url(url, headers)
+        if inferred_yt_fn and (not filename or filename.startswith("videoplayback") or filename in ["download", "watch"]):
+            filename = inferred_yt_fn
+        elif not filename or filename.startswith("videoplayback") or filename in ["download", "watch"]:
+            filename = None
+
         # Inferred filename
         if not filename:
             path_part = urllib.parse.unquote(urllib.parse.urlparse(url).path.rstrip("/"))
             filename = os.path.basename(path_part) or "download"
             if filename.endswith(".m3u8") or filename.endswith(".mpd"):
                 filename = os.path.splitext(filename)[0] + ".mp4"
+            elif is_youtube_url(url) and any(x in url for x in ["/watch", "youtu.be", "/shorts", "/live", "/embed"]):
+                filename = infer_youtube_filename(url)
 
         # Categorize
         if not category or category == "General":

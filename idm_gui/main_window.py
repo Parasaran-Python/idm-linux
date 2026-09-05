@@ -23,6 +23,7 @@ from PyQt6.QtWidgets import (
 )
 from idm_core.config import Config
 from idm_core.engine import DownloadEngine
+from idm_core.utils import normalize_youtube_videoplayback_url
 from idm_gui.dialogs.batch_download_dialog import BatchDownloadDialog
 from idm_gui.dialogs.delete_dialog import DeleteConfirmDialog
 from idm_gui.dialogs.download_info_dialog import DownloadInfoDialog
@@ -254,6 +255,15 @@ class MainWindow(QMainWindow):
             quality = data.get("quality")
             if quality and "quality" not in headers:
                 headers["quality"] = quality
+
+            # Resolve raw Google Video DASH chunk to full YouTube video URL if referer is available
+            normalized_url, inferred_fn = normalize_youtube_videoplayback_url(url, headers)
+            if normalized_url != url:
+                url = normalized_url
+                if inferred_fn and (not raw_filename or raw_filename.startswith("videoplayback") or raw_filename in ["download", "watch"]):
+                    raw_filename = inferred_fn
+                elif not raw_filename or raw_filename.startswith("videoplayback") or raw_filename in ["download", "watch"]:
+                    raw_filename = ""
 
             total_bytes = data.get("total_bytes", 0)
             category = data.get("category", "")
