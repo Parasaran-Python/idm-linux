@@ -177,6 +177,31 @@ class TestDownloadEngine(unittest.TestCase):
         info = self.engine.get_download_info(dl_id)
         self.assertEqual(info["url"], raw_dash_url, "Non-YouTube referer must NOT rewrite videoplayback URL")
 
+    def test_add_download_handles_malformed_youtu_be_and_youtube_urls(self):
+        # Empty path youtu.be
+        dl_id1 = self.engine.add_download(url="https://youtu.be/", start_immediately=False)
+        info1 = self.engine.get_download_info(dl_id1)
+        self.assertEqual(info1["filename"], "video.mp4")
+        self.assertEqual(info1["category"], "Video")
+
+        # Bare origin youtu.be
+        dl_id2 = self.engine.add_download(url="https://youtu.be", start_immediately=False)
+        info2 = self.engine.get_download_info(dl_id2)
+        self.assertEqual(info2["filename"], "video.mp4")
+        self.assertEqual(info2["category"], "Video")
+
+        # Empty path with query params
+        dl_id3 = self.engine.add_download(url="https://youtu.be/?feature=share", start_immediately=False)
+        info3 = self.engine.get_download_info(dl_id3)
+        self.assertEqual(info3["filename"], "video.mp4")
+        self.assertEqual(info3["category"], "Video")
+
+        # Watch URL with missing v= parameter
+        dl_id4 = self.engine.add_download(url="https://www.youtube.com/watch", start_immediately=False)
+        info4 = self.engine.get_download_info(dl_id4)
+        self.assertEqual(info4["filename"], "video.mp4")
+        self.assertEqual(info4["category"], "Video")
+
 
 if __name__ == "__main__":
     unittest.main()

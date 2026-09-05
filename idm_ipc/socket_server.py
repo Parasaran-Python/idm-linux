@@ -2,6 +2,7 @@ import os
 import socket
 import threading
 from typing import Any, Dict, List, Optional, Set
+from idm_core.utils import normalize_youtube_videoplayback_url
 from idm_ipc.protocol import decode_message, encode_message
 from idm_ipc.transport import BaseConnection, BaseServerTransport, create_server_transport
 
@@ -123,13 +124,14 @@ class IPCServer:
                     return {"status": "error", "error": "URL is required"}
 
                 headers = msg.get("headers") or {}
-                referer = headers.get("Referer") or headers.get("referer") or headers.get("page_url", "")
-                is_yt_video_referer = ("youtube.com" in referer or "youtu.be" in referer) and any(x in referer for x in ["/watch", "/shorts", "/live", "/embed", "youtu.be"])
-                if ("videoplayback" in url or "googlevideo.com" in url) and is_yt_video_referer:
-                    url = referer
-                    msg["url"] = referer
+                normalized_url, inferred_fn = normalize_youtube_videoplayback_url(url, headers)
+                if normalized_url != url:
+                    url = normalized_url
+                    msg["url"] = normalized_url
                     fn = msg.get("filename")
-                    if not fn or fn.startswith("videoplayback") or fn in ["download", "watch"]:
+                    if inferred_fn and (not fn or fn.startswith("videoplayback") or fn in ["download", "watch"]):
+                        msg["filename"] = inferred_fn
+                    elif not fn or fn.startswith("videoplayback") or fn in ["download", "watch"]:
                         msg["filename"] = None
 
                 # If GUI is active and show_dialog is requested (default for browser), trigger DownloadInfoDialog prompt

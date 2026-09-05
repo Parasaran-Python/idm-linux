@@ -226,36 +226,36 @@ document.addEventListener("DOMContentLoaded", () => {
           if (seen.has(item.url)) return;
           seen.add(item.url);
 
-              const row = document.createElement("div");
-              row.className = "media-item";
-              row.title = item.url;
-              const cleanUrlHint = item.url.split("?")[0].replace(/^https?:\/\//, "");
-              row.innerHTML = `
-                <div class="media-item-info">
-                  <span class="media-item-title">${item.label}</span>
-                  <span class="media-item-url-hint">${cleanUrlHint}</span>
-                </div>
-                <span class="media-item-badge">${item.badge}</span>
-              `;
-              row.addEventListener("click", () => {
-                const title = activeTab.title ? activeTab.title.replace(/[\\/:*?"<>|]/g, "_").trim() : "video";
-                const ext = item.badge.toLowerCase() === "hls" || item.badge.toLowerCase() === "dash" || item.badge.toLowerCase() === "youtube" ? "mp4" : item.badge.toLowerCase();
-                chrome.runtime.sendMessage({
-                  action: "download_media",
-                  url: item.url,
-                  page_url: activeTab.url || "",
-                  filename: `${title}.${ext}`,
-                  quality: "best"
-                }, () => {
-                  if (chrome.runtime.lastError) { /* ignore */ }
-                  window.close();
-                });
-              });
-            mediaList.appendChild(row);
+          const row = document.createElement("div");
+          row.className = "media-item";
+          row.title = item.url;
+          const cleanUrlHint = item.url.split("?")[0].replace(/^https?:\/\//, "");
+          row.innerHTML = `
+            <div class="media-item-info">
+              <span class="media-item-title">${item.label}</span>
+              <span class="media-item-url-hint">${cleanUrlHint}</span>
+            </div>
+            <span class="media-item-badge">${item.badge}</span>
+          `;
+          row.addEventListener("click", () => {
+            const title = activeTab.title ? activeTab.title.replace(/[\\/:*?"<>|]/g, "_").trim() : "video";
+            const ext = item.badge.toLowerCase() === "hls" || item.badge.toLowerCase() === "dash" || item.badge.toLowerCase() === "youtube" ? "mp4" : item.badge.toLowerCase();
+            chrome.runtime.sendMessage({
+              action: "download_media",
+              url: item.url,
+              page_url: activeTab.url || "",
+              filename: `${title}.${ext}`,
+              quality: "best"
+            }, () => {
+              if (chrome.runtime.lastError) { /* ignore */ }
+              window.close();
+            });
           });
+          mediaList.appendChild(row);
         });
-      }
-    });
+      });
+    }
+  });
 
   // 5. Open Desktop Application
   btnOpenGui.addEventListener("click", () => {

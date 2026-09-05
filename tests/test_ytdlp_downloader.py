@@ -437,6 +437,34 @@ class TestYTDLPDownloader(unittest.TestCase):
             self.assertIn("--user-agent", cmd)
             self.assertIn("CustomUA", cmd)
 
+    def test_run_ytdlp_command_args_passes_lowercase_headers(self):
+        from unittest.mock import patch, MagicMock
+        downloader = YTDLPDownloader(
+            "case-header-test",
+            "https://youtube.com/watch?v=123",
+            "/tmp/out.mp4",
+            headers={"cookie": "session_id=foo456", "user-agent": "LowerUA", "referer": "https://youtube.com/watch?v=123"}
+        )
+
+        mock_proc = MagicMock()
+        mock_proc.stdout = []
+        mock_proc.returncode = 0
+        mock_proc.wait.return_value = 0
+
+        with patch("idm_core.ytdlp_downloader.resolve_binary") as mock_res_bin, \
+             patch("subprocess.Popen", return_value=mock_proc) as mock_popen:
+            mock_res_bin.return_value = "/usr/bin/ffmpeg"
+            downloader._run_ytdlp()
+
+            self.assertTrue(mock_popen.called)
+            cmd = mock_popen.call_args[0][0]
+            self.assertIn("--add-headers", cmd)
+            self.assertIn("Cookie:session_id=foo456", cmd)
+            self.assertIn("--user-agent", cmd)
+            self.assertIn("LowerUA", cmd)
+            self.assertIn("--referer", cmd)
+            self.assertIn("https://youtube.com/watch?v=123", cmd)
+
 
 if __name__ == "__main__":
     unittest.main()

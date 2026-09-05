@@ -472,13 +472,15 @@ class YTDLPDownloader:
             else:
                 cmd.extend(["-f", "best"])
 
-        # Add User-Agent, Referer, and Cookies if present
+        # Add User-Agent, Referer, and Cookies if present (case-insensitive per RFC 7230)
         if self.headers:
-            if "User-Agent" in self.headers:
-                cmd.extend(["--user-agent", self.headers["User-Agent"]])
-            if "Referer" in self.headers:
-                cmd.extend(["--referer", self.headers["Referer"]])
-            cookie = self.headers.get("Cookie") or self.headers.get("cookie")
+            user_agent = next((v for k, v in self.headers.items() if k.lower() == "user-agent"), None)
+            if user_agent:
+                cmd.extend(["--user-agent", user_agent])
+            referer = next((v for k, v in self.headers.items() if k.lower() == "referer"), None)
+            if referer:
+                cmd.extend(["--referer", referer])
+            cookie = next((v for k, v in self.headers.items() if k.lower() == "cookie"), None)
             if cookie:
                 cmd.extend(["--add-headers", f"Cookie:{cookie}"])
 

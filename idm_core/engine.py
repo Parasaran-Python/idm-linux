@@ -15,6 +15,7 @@ from idm_core.scheduler import Scheduler
 from idm_core.segment_downloader import SegmentDownloader
 from idm_core.storage import StorageManager
 from idm_core.stream_downloader import StreamDownloader
+from idm_core.utils import infer_youtube_filename, is_youtube_url, normalize_youtube_videoplayback_url
 from idm_core.ytdlp_downloader import YTDLPDownloader
 
 
@@ -73,12 +74,11 @@ class DownloadEngine:
         headers = headers or {}
         
         # Resolve raw Google Video DASH chunk to full YouTube video URL if referer or page_url is available
-        referer = headers.get("Referer") or headers.get("referer") or headers.get("page_url", "")
-        is_yt_video_referer = ("youtube.com" in referer or "youtu.be" in referer) and any(x in referer for x in ["/watch", "/shorts", "/live", "/embed", "youtu.be"])
-        if ("videoplayback" in url or "googlevideo.com" in url) and is_yt_video_referer:
-            url = referer
-            if not filename or filename.startswith("videoplayback") or filename in ["download", "watch"]:
-                filename = None
+        url, inferred_yt_fn = normalize_youtube_videoplayback_url(url, headers)
+        if inferred_yt_fn and (not filename or filename.startswith("videoplayback") or filename in ["download", "watch"]):
+            filename = inferred_yt_fn
+        elif not filename or filename.startswith("videoplayback") or filename in ["download", "watch"]:
+            filename = None
 
         # Inferred filename
         if not filename:
@@ -87,13 +87,8 @@ class DownloadEngine:
             filename = os.path.basename(path_part) or "download"
             if filename.endswith(".m3u8") or filename.endswith(".mpd"):
                 filename = os.path.splitext(filename)[0] + ".mp4"
-            elif ("youtube.com" in url or "youtu.be" in url) and any(x in url for x in ["/watch", "youtu.be", "/shorts", "/live", "/embed"]):
-                query_params = urllib.parse.parse_qs(parsed_url.query)
-                video_id = query_params.get("v", [""])[0]
-                if video_id:
-                    filename = f"{video_id}.mp4"
-                elif not filename or filename in ["watch", "download", "live", "embed"] or "." not in filename:
-                    filename = f"{filename}.mp4" if (filename and filename not in ["watch", "download", "live", "embed"]) else "video.mp4"
+            elif is_youtube_url(url) and any(x in url for x in ["/watch", "youtu.be", "/shorts", "/live", "/embed"]):
+                filename = infer_youtube_filename(url)
 
         # Categorize
         if not category or category == "General":

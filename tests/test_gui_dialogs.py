@@ -57,14 +57,12 @@ class TestGUIDialogs(unittest.TestCase):
 
     def test_probe_worker_normalizes_videoplayback_url(self):
         from idm_gui.dialogs.download_info_dialog import ProbeWorker
+        from idm_core.utils import normalize_youtube_videoplayback_url
         worker = ProbeWorker(
             url="https://rr1---sn-4g5ednsl.googlevideo.com/videoplayback?expire=12345",
             headers={"Referer": "https://www.youtube.com/watch?v=dQw4w9WgXcQ"}
         )
-        referer = worker.headers.get("Referer", "")
-        is_yt_video_referer = ("youtube.com" in referer or "youtu.be" in referer) and any(x in referer for x in ["/watch", "/shorts", "/live", "/embed", "youtu.be"])
-        if ("videoplayback" in worker.url or "googlevideo.com" in worker.url) and is_yt_video_referer:
-            worker.url = referer
+        worker.url, _ = normalize_youtube_videoplayback_url(worker.url, worker.headers)
         self.assertEqual(worker.url, "https://www.youtube.com/watch?v=dQw4w9WgXcQ")
 
         # Non-youtube referer should not normalize
@@ -72,10 +70,7 @@ class TestGUIDialogs(unittest.TestCase):
             url="https://rr1---sn-4g5ednsl.googlevideo.com/videoplayback?expire=12345",
             headers={"Referer": "https://example.com/watch?v=123"}
         )
-        referer2 = worker2.headers.get("Referer", "")
-        is_yt_video_referer2 = ("youtube.com" in referer2 or "youtu.be" in referer2) and any(x in referer2 for x in ["/watch", "/shorts", "/live", "/embed", "youtu.be"])
-        if ("videoplayback" in worker2.url or "googlevideo.com" in worker2.url) and is_yt_video_referer2:
-            worker2.url = referer2
+        worker2.url, _ = normalize_youtube_videoplayback_url(worker2.url, worker2.headers)
         self.assertEqual(worker2.url, "https://rr1---sn-4g5ednsl.googlevideo.com/videoplayback?expire=12345")
 
     def test_download_info_dialog_normalizes_videoplayback_url(self):
