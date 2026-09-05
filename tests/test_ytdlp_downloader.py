@@ -327,6 +327,59 @@ class TestYTDLPDownloader(unittest.TestCase):
             self.assertIn("best[height<=1080]/best", cmd_str)
             self.assertNotIn("--merge-output-format", cmd_str)
 
+    def test_run_ytdlp_command_args_for_audio_with_ffmpeg(self):
+        from unittest.mock import patch, MagicMock
+        downloader = YTDLPDownloader("audio-test", "https://youtube.com/watch?v=123", "/tmp/song.mp3", quality="audio")
+
+        mock_proc = MagicMock()
+        mock_proc.stdout = []
+        mock_proc.returncode = 0
+        mock_proc.wait.return_value = 0
+
+        with patch("idm_core.ytdlp_downloader.resolve_binary") as mock_res_bin, \
+             patch("subprocess.Popen", return_value=mock_proc) as mock_popen:
+            def fake_resolve(bin_name):
+                if bin_name == "ffmpeg":
+                    return "/usr/bin/ffmpeg"
+                return "/usr/bin/yt-dlp"
+            mock_res_bin.side_effect = fake_resolve
+
+            downloader._run_ytdlp()
+
+            self.assertTrue(mock_popen.called)
+            cmd = mock_popen.call_args[0][0]
+            cmd_str = " ".join(cmd)
+            self.assertIn("--audio-format mp3", cmd_str)
+            self.assertIn("--ffmpeg-location", cmd)
+            self.assertIn("/usr/bin/ffmpeg", cmd)
+            self.assertNotIn("--merge-output-format", cmd_str)
+
+    def test_run_ytdlp_command_args_for_webm_with_ffmpeg(self):
+        from unittest.mock import patch, MagicMock
+        downloader = YTDLPDownloader("webm-test", "https://youtube.com/watch?v=123", "/tmp/out.webm", quality="1080")
+
+        mock_proc = MagicMock()
+        mock_proc.stdout = []
+        mock_proc.returncode = 0
+        mock_proc.wait.return_value = 0
+
+        with patch("idm_core.ytdlp_downloader.resolve_binary") as mock_res_bin, \
+             patch("subprocess.Popen", return_value=mock_proc) as mock_popen:
+            def fake_resolve(bin_name):
+                if bin_name == "ffmpeg":
+                    return "/usr/bin/ffmpeg"
+                return "/usr/bin/yt-dlp"
+            mock_res_bin.side_effect = fake_resolve
+
+            downloader._run_ytdlp()
+
+            self.assertTrue(mock_popen.called)
+            cmd = mock_popen.call_args[0][0]
+            cmd_str = " ".join(cmd)
+            self.assertNotIn("acodec:m4a", cmd_str)
+            self.assertNotIn("--merge-output-format", cmd_str)
+            self.assertNotIn("Merger:-c:a aac", cmd_str)
+
 
 if __name__ == "__main__":
     unittest.main()

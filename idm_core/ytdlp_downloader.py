@@ -424,10 +424,13 @@ class YTDLPDownloader:
 
         # Automatic container merging via ffmpeg if available
         ffmpeg_bin = resolve_binary("ffmpeg")
+        if ffmpeg_bin:
+            cmd.extend(["--ffmpeg-location", ffmpeg_bin])
 
         # Quality and format selection with resilient video+audio pairing
         q_str = str(self.quality or self.headers.get("quality", "")).lower().strip()
         is_audio = "audio" in q_str or "mp3" in q_str or self.save_path.lower().endswith((".mp3", ".m4a", ".aac"))
+        is_webm = self.save_path.lower().endswith(".webm")
 
         if is_audio:
             if ffmpeg_bin:
@@ -435,24 +438,30 @@ class YTDLPDownloader:
             else:
                 cmd.extend(["-f", "bestaudio/best"])
         elif ffmpeg_bin:
-            # When ffmpeg is available, prioritize native AAC/m4a audio for MP4 containers
-            # to guarantee full sound playback compatibility across all OSes (Windows Media Player, QuickTime, mobile, TV)
             height = "".join(filter(str.isdigit, q_str)) if q_str else ""
-            if height:
-                cmd.extend([
-                    "-f",
-                    f"bestvideo[height<={height}]+bestaudio[ext=m4a]/bestvideo[height<={height}]+bestaudio[acodec^=mp4a]/bestvideo[height<={height}]+bestaudio/best[height<={height}]/best"
-                ])
+            if is_webm:
+                # WebM containers require Opus or Vorbis audio; do not force AAC or MP4 muxing
+                if height:
+                    cmd.extend(["-f", f"bestvideo[height<={height}]+bestaudio/best[height<={height}]/best"])
+                else:
+                    cmd.extend(["-f", "bestvideo+bestaudio/best"])
             else:
-                cmd.extend([
-                    "-f",
-                    "bestvideo+bestaudio[ext=m4a]/bestvideo+bestaudio[acodec^=mp4a]/bestvideo+bestaudio/best"
-                ])
-            cmd.extend(["-S", "acodec:m4a,acodec:aac"])
-            cmd.extend(["--ffmpeg-location", ffmpeg_bin])
-            if not self.save_path.lower().endswith((".mkv", ".webm")):
-                cmd.extend(["--merge-output-format", "mp4"])
-                cmd.extend(["--postprocessor-args", "Merger:-c:v copy -c:a aac"])
+                # When ffmpeg is available and container is MP4 (or default), prioritize native AAC/m4a audio
+                # to guarantee full sound playback compatibility across all OSes (Windows Media Player, QuickTime, mobile, TV)
+                if height:
+                    cmd.extend([
+                        "-f",
+                        f"bestvideo[height<={height}]+bestaudio[ext=m4a]/bestvideo[height<={height}]+bestaudio[acodec^=mp4a]/bestvideo[height<={height}]+bestaudio/best[height<={height}]/best"
+                    ])
+                else:
+                    cmd.extend([
+                        "-f",
+                        "bestvideo+bestaudio[ext=m4a]/bestvideo+bestaudio[acodec^=mp4a]/bestvideo+bestaudio/best"
+                    ])
+                cmd.extend(["-S", "acodec:m4a,acodec:aac"])
+                if not self.save_path.lower().endswith((".mkv",)):
+                    cmd.extend(["--merge-output-format", "mp4"])
+                    cmd.extend(["--postprocessor-args", "Merger:-c:v copy -c:a aac"])
         else:
             # Without ffmpeg, yt-dlp cannot merge separate video + audio streams.
             # Requesting bestvideo+bestaudio without ffmpeg results in unmerged files with silent video.

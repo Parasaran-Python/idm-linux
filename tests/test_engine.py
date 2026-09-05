@@ -127,6 +127,20 @@ class TestDownloadEngine(unittest.TestCase):
         )
         info = self.engine.get_download_info(dl_id)
         self.assertEqual(info["url"], yt_watch_url, "Raw videoplayback URL with YouTube Referer must be normalized to YouTube watch URL")
+        self.assertEqual(info["filename"], "video.mp4")
+
+    def test_add_download_infers_filename_for_youtube_shorts_and_short_urls(self):
+        shorts_url = "https://www.youtube.com/shorts/dQw4w9WgXcQ"
+        dl_id = self.engine.add_download(url=shorts_url, start_immediately=False)
+        info = self.engine.get_download_info(dl_id)
+        self.assertEqual(info["filename"], "dQw4w9WgXcQ.mp4")
+        self.assertEqual(info["category"], "Video")
+
+        youtu_url = "https://youtu.be/dQw4w9WgXcQ"
+        dl_id2 = self.engine.add_download(url=youtu_url, start_immediately=False)
+        info2 = self.engine.get_download_info(dl_id2)
+        self.assertEqual(info2["filename"], "dQw4w9WgXcQ.mp4")
+        self.assertEqual(info2["category"], "Video")
 
 
 if __name__ == "__main__":

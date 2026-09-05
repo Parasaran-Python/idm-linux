@@ -76,7 +76,7 @@ class DownloadEngine:
         referer = headers.get("Referer") or headers.get("referer") or headers.get("page_url", "")
         if ("videoplayback" in url or "googlevideo.com" in url) and ("youtube.com" in referer or "youtu.be" in referer):
             url = referer
-            if filename in [None, "", "videoplayback", "download"]:
+            if not filename or filename.startswith("videoplayback") or filename in ["download", "watch"]:
                 filename = None
 
         # Inferred filename
@@ -86,8 +86,8 @@ class DownloadEngine:
             if filename.endswith(".m3u8") or filename.endswith(".mpd"):
                 filename = os.path.splitext(filename)[0] + ".mp4"
             elif "/watch" in url or "youtu.be" in url or "/shorts" in url:
-                if not filename or filename == "watch" or filename == "download":
-                    filename = "video.mp4"
+                if not filename or filename in ["watch", "download"] or "." not in filename:
+                    filename = f"{filename}.mp4" if (filename and filename not in ["watch", "download"]) else "video.mp4"
 
         # Categorize
         if not category or category == "General":

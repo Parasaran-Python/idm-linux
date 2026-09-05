@@ -142,7 +142,19 @@ document.addEventListener("DOMContentLoaded", () => {
     if (chrome.runtime.lastError) return;
     if (tabs && tabs[0] && tabs[0].id) {
       const activeTab = tabs[0];
-      const isYouTube = activeTab.url && (activeTab.url.includes("youtube.com") || activeTab.url.includes("youtu.be"));
+      let isYouTube = false;
+      if (activeTab.url) {
+        try {
+          const parsedUrl = new URL(activeTab.url);
+          const host = parsedUrl.hostname.toLowerCase();
+          const path = parsedUrl.pathname.toLowerCase();
+          if (host.includes("youtube.com")) {
+            isYouTube = path.startsWith("/watch") || path.startsWith("/shorts") || path.startsWith("/live") || path.startsWith("/embed");
+          } else if (host.includes("youtu.be")) {
+            isYouTube = true;
+          }
+        } catch (e) {}
+      }
       chrome.runtime.sendMessage({ action: "get_tab_media", tabId: activeTab.id }, (res) => {
         if (chrome.runtime.lastError) return;
         const mediaCard = document.getElementById("media-card");
