@@ -136,8 +136,13 @@ class DownloadEngine:
             saved_segments = self.database.get_segments(download_id)
 
             is_stream = url.endswith(".m3u8") or ".m3u8?" in url or url.endswith(".mpd") or ".mpd?" in url
-            is_platform_video = not is_stream and YTDLPDownloader.is_ytdlp_available() and (
-                YTDLPDownloader.is_video_platform_url(url) or bool(headers.get("quality")) or "/watch" in url or "/video" in url or "/shorts" in url
+            is_direct_media = YTDLPDownloader.is_direct_media_url(url)
+            is_platform_video = not is_stream and not is_direct_media and YTDLPDownloader.is_ytdlp_available() and (
+                YTDLPDownloader.is_video_platform_url(url)
+                or (bool(headers.get("quality")) and not is_direct_media)
+                or "/watch?" in url
+                or "/watch/" in url
+                or "/shorts/" in url
             )
 
             if is_platform_video:
@@ -335,8 +340,41 @@ class DownloadEngine:
 
     def _on_error_callback(self, download_id: str, error_msg: str):
         with self._lock:
-            if download_id in self.active_downloaders:
-                del self.active_downloaders[download_id]
+            downloader = self.active_downloaders.pop(download_id, None)
+
+        # Resilient fallback: if YTDLPDownloader failed and 0 bytes were downloaded,
+        # try falling back to standard SegmentDownloader if the URL is an HTTP/HTTPS resource
+        if isinstance(downloader, YTDLPDownloader):
+            record = self.database.get_download(download_id)
+            if record and record.get("downloaded_bytes", 0) == 0:
+                url = record.get("url", "")
+                if url.startswith(("http://", "https://")):
+                    try:
+                        conn_count = record.get("connections_count", self.config.max_connections)
+                        save_path = record["save_path"]
+                        saved_segments = self.database.get_segments(download_id)
+                        seg_downloader = SegmentDownloader(
+                            download_id=download_id,
+                            url=url,
+                            save_path=save_path,
+                            storage=self.storage,
+                            config=self.config,
+                            num_connections=conn_count,
+                            headers=record.get("headers", {}),
+                            saved_segments=saved_segments,
+                            on_progress=self._on_progress_callback,
+                            on_segment_update=self._on_segment_update_callback,
+                            on_complete=self._on_complete_callback,
+                            on_error=self._on_error_callback,
+                        )
+                        with self._lock:
+                            self.active_downloaders[download_id] = seg_downloader
+                        self.database.update_download(download_id, status="downloading", error_msg="")
+                        seg_downloader.start()
+                        return
+                    except Exception:
+                        pass
+
         self.database.update_download(download_id, status="error", error_msg=error_msg, speed=0)
         self.notify("download_error", {"download_id": download_id, "error": error_msg})
 

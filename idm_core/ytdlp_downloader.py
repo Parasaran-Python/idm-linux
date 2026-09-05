@@ -10,12 +10,18 @@ import shutil
 import subprocess
 import threading
 import time
+import urllib.parse
 from typing import Any, Callable, Dict, List, Optional
 from idm_core.config import Config
 from idm_core.platform import resolve_binary
 
 
 class YTDLPDownloader:
+    DIRECT_MEDIA_EXTS = (
+        ".mp4", ".mkv", ".webm", ".avi", ".mov", ".flv", ".wmv", ".m4v", ".3gp", ".ts",
+        ".mp3", ".m4a", ".aac", ".ogg", ".flac", ".wav", ".opus", ".wma"
+    )
+
     def __init__(
         self,
         download_id: str,
@@ -69,6 +75,29 @@ class YTDLPDownloader:
     def is_ytdlp_available() -> bool:
         return resolve_binary("yt-dlp") is not None or resolve_binary("youtube-dl") is not None
 
+    @classmethod
+    def is_direct_media_url(cls, url: str) -> bool:
+        """Check if URL directly points to a media file (.mp4, .webm, .mp3, etc.)."""
+        if not url:
+            return False
+        try:
+            parsed = urllib.parse.urlparse(url)
+            clean_path = parsed.path.rstrip("/")
+            ext = os.path.splitext(clean_path)[1].lower()
+            if ext in cls.DIRECT_MEDIA_EXTS:
+                return True
+            if parsed.query:
+                qs = urllib.parse.parse_qs(parsed.query)
+                for values in qs.values():
+                    for v in values:
+                        v_clean = v.split("?")[0].rstrip("/")
+                        v_ext = os.path.splitext(v_clean)[1].lower()
+                        if v_ext in cls.DIRECT_MEDIA_EXTS:
+                            return True
+        except Exception:
+            pass
+        return False
+
     @staticmethod
     def is_video_platform_url(url: str) -> bool:
         """Check if URL points to a known streaming video platform."""
@@ -111,6 +140,7 @@ class YTDLPDownloader:
             "--no-playlist",
             "--no-check-certificates",
             "--geo-bypass",
+            "--compat-options", "allow-unsafe-ext",
             "--remote-components", "ejs:github"
         ]
         cmd.extend(cls._get_js_runtime_args())
@@ -297,6 +327,7 @@ class YTDLPDownloader:
             "--no-playlist",
             "--no-check-certificates",
             "--geo-bypass",
+            "--compat-options", "allow-unsafe-ext",
             "--remote-components", "ejs:github"
         ]
         cmd.extend(cls._get_js_runtime_args())
@@ -415,6 +446,7 @@ class YTDLPDownloader:
             "--no-playlist",
             "--no-check-certificates",
             "--geo-bypass",
+            "--compat-options", "allow-unsafe-ext",
             "--remote-components", "ejs:github",
             "-o", self.save_path,
         ]

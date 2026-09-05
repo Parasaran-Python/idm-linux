@@ -43,7 +43,8 @@ class ProbeWorker(QObject):
 
             # 1. Video Platform URLs (YouTube, Vimeo, Twitch, etc.)
             from idm_core.ytdlp_downloader import YTDLPDownloader
-            if YTDLPDownloader.is_ytdlp_available() and (
+            is_direct_media = YTDLPDownloader.is_direct_media_url(self.url)
+            if not is_direct_media and YTDLPDownloader.is_ytdlp_available() and (
                 YTDLPDownloader.is_video_platform_url(self.url) or bool(self.headers.get("quality"))
             ):
                 quality = self.headers.get("quality")
@@ -52,7 +53,7 @@ class ProbeWorker(QObject):
                 filename = info.get("filename", "")
                 if size > 0 or filename:
                     self.probed.emit(size, filename)
-                return
+                    return
 
             # 2. HLS & DASH Video Stream URLs (.m3u8, .mpd)
             if ".m3u8" in self.url.lower() or ".mpd" in self.url.lower():

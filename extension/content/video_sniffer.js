@@ -212,9 +212,9 @@
             } else if (streamUrl.includes(".m3u8")) {
               validStreams.push({ label: "HLS Video Stream (.m3u8)", format: "HLS", quality: "best", url: streamUrl, priority: 2 });
             } else if (streamUrl.includes(".mp4") || (meta.format && meta.format.includes("mp4"))) {
-              validStreams.push({ label: "Full MP4 Video (Original)", format: "MP4", quality: "best", url: streamUrl, priority: 3 });
+              validStreams.push({ label: "Full MP4 Video (Original)", format: "MP4", quality: null, url: streamUrl, priority: 3 });
             } else if (streamUrl.includes(".webm") || (meta.format && meta.format.includes("webm"))) {
-              validStreams.push({ label: "Full WebM Video", format: "WEBM", quality: "best", url: streamUrl, priority: 4 });
+              validStreams.push({ label: "Full WebM Video", format: "WEBM", quality: null, url: streamUrl, priority: 4 });
             } else if (streamUrl.includes(".mp3") || streamUrl.includes(".m4a") || (meta.format && meta.format.includes("audio"))) {
               validStreams.push({ label: "Audio Stream", format: "MP3", quality: "audio", url: streamUrl, priority: 5 });
             } else {

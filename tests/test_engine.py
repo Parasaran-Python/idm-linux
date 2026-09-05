@@ -117,6 +117,38 @@ class TestDownloadEngine(unittest.TestCase):
         self.assertTrue(queue_state["is_active"])
         self.engine.stop_queue(q_id)
 
+    def test_direct_mp4_download_routes_to_segment_downloader_even_with_quality(self):
+        from idm_core.segment_downloader import SegmentDownloader
+        from idm_core.ytdlp_downloader import YTDLPDownloader
+
+        mp4_url = f"http://127.0.0.1:{self.port}/get_file/video_720p.mp4/?token=abc"
+        dl_id = self.engine.add_download(
+            url=mp4_url,
+            headers={"quality": "best"},
+            start_immediately=False
+        )
+
+        with unittest.mock.patch.object(YTDLPDownloader, "is_ytdlp_available", return_value=True):
+            self.engine.start_download(dl_id)
+            active = self.engine.active_downloaders.get(dl_id)
+            self.assertIsInstance(active, SegmentDownloader)
+            self.assertNotIsInstance(active, YTDLPDownloader)
+
+    def test_ytdlp_downloader_fallback_to_segment_downloader(self):
+        from idm_core.segment_downloader import SegmentDownloader
+        from idm_core.ytdlp_downloader import YTDLPDownloader
+
+        url = f"http://127.0.0.1:{self.port}/package.zip"
+        dl_id = self.engine.add_download(url=url, start_immediately=False)
+
+        fake_ytdlp = YTDLPDownloader(dl_id, url, os.path.join(self.test_dir, "pkg.zip"))
+        self.engine.active_downloaders[dl_id] = fake_ytdlp
+
+        self.engine._on_error_callback(dl_id, "ERROR: The extracted extension ('php') is unusual")
+
+        active = self.engine.active_downloaders.get(dl_id)
+        self.assertIsInstance(active, SegmentDownloader)
+
 
 if __name__ == "__main__":
     unittest.main()
