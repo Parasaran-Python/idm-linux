@@ -55,7 +55,6 @@ class TestGUIDialogs(unittest.TestCase):
         urls = dialog.get_urls()
         self.assertEqual(len(urls), 2)
 
-<<<<<<< HEAD
     def test_probe_worker_direct_media_skips_ytdlp(self):
         from idm_gui.dialogs.download_info_dialog import ProbeWorker
         from idm_core.ytdlp_downloader import YTDLPDownloader
