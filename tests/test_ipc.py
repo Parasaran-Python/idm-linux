@@ -64,6 +64,28 @@ class TestIPC(unittest.TestCase):
         self.assertEqual(list_res.get("status"), "ok")
         self.assertEqual(len(list_res["downloads"]), 1)
 
+    def test_add_download_normalizes_videoplayback_via_ipc(self):
+        client = IPCClient(self.config.socket_path)
+        self.assertTrue(client.is_server_running())
+
+        res = client.send_request({
+            "action": "add_download",
+            "url": "https://rr1---sn-4g5ednsl.googlevideo.com/videoplayback?expire=12345&mime=video%2Fmp4",
+            "headers": {"Referer": "https://www.youtube.com/watch?v=dQw4w9WgXcQ"},
+            "start_immediately": False
+        })
+        self.assertEqual(res.get("status"), "ok")
+        dl_id = res.get("download_id")
+        self.assertIsNotNone(dl_id)
+
+        dl_info = client.send_request({
+            "action": "get_download",
+            "download_id": dl_id
+        })
+        self.assertEqual(dl_info.get("status"), "ok")
+        self.assertEqual(dl_info["download"]["url"], "https://www.youtube.com/watch?v=dQw4w9WgXcQ")
+        self.assertEqual(dl_info["download"]["filename"], "dQw4w9WgXcQ.mp4")
+
 
 if __name__ == "__main__":
     unittest.main()

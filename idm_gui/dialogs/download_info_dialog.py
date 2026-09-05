@@ -22,6 +22,7 @@ from PyQt6.QtWidgets import (
     QPushButton,
     QVBoxLayout,
 )
+from idm_core.utils import normalize_youtube_videoplayback_url
 from idm_gui.widgets.download_table import format_bytes
 
 
@@ -40,6 +41,9 @@ class ProbeWorker(QObject):
         try:
             if not self.url or not self.url.startswith(("http://", "https://", "ftp://")):
                 return
+
+            # Resolve raw Google Video DASH chunk to full YouTube video URL if referer is available
+            self.url, _ = normalize_youtube_videoplayback_url(self.url, self.headers)
 
             # 1. Video Platform URLs (YouTube, Vimeo, Twitch, etc.)
             from idm_core.ytdlp_downloader import YTDLPDownloader
@@ -128,6 +132,16 @@ class DownloadInfoDialog(QDialog):
         self.headers = headers or {}
         self.file_size = file_size
         self.probe_worker: Optional[ProbeWorker] = None
+        self._inferred_fn: Optional[str] = None
+
+        normalized_url, inferred_fn = normalize_youtube_videoplayback_url(url, self.headers)
+        if normalized_url != url:
+            url = normalized_url
+            if inferred_fn and (not filename or filename.startswith("videoplayback") or filename in ["download", "watch"]):
+                filename = inferred_fn
+                self._inferred_fn = inferred_fn
+            elif not filename or filename.startswith("videoplayback") or filename in ["download", "watch"]:
+                filename = ""
 
         self._setup_ui(url, filename, save_path, category, file_size)
 
@@ -147,8 +161,18 @@ class DownloadInfoDialog(QDialog):
             cur_path = self.save_edit.text()
             cur_dir = os.path.dirname(cur_path) if cur_path else os.path.expanduser("~/Downloads")
             cur_fn = os.path.basename(cur_path)
-            if not cur_fn or cur_fn in ["download", "videoplayback", "stream"]:
+            if (
+                not cur_fn
+                or cur_fn in ["download", "videoplayback", "stream", "video.mp4"]
+                or (getattr(self, "_inferred_fn", None) and cur_fn == self._inferred_fn)
+            ):
                 self.save_edit.setText(os.path.join(cur_dir, filename))
+            if hasattr(self, "category_combo") and self.category_combo.currentText() == "General":
+                lower_fn = filename.lower()
+                if lower_fn.endswith((".mp4", ".webm", ".mkv", ".mov", ".avi", ".flv")):
+                    self.category_combo.setCurrentText("Video")
+                elif lower_fn.endswith((".mp3", ".m4a", ".aac", ".flac", ".wav", ".ogg")):
+                    self.category_combo.setCurrentText("Music")
 
     def _setup_ui(self, url: str, filename: str, save_path: str, category: str, file_size: int):
         layout = QVBoxLayout(self)

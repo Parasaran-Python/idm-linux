@@ -139,6 +139,27 @@ class TestExtensionManifests(unittest.TestCase):
             manifest_content = json.loads(zf.read("manifest.json").decode("utf-8"))
             self.assertEqual(manifest_content.get("manifest_version"), 2)
 
+    def test_extension_javascript_syntax(self):
+        """Validate JavaScript syntax across all extension source files via node --check if available."""
+        import shutil
+        node_bin = shutil.which("node")
+        if not node_bin:
+            self.skipTest("node binary not available for JS syntax checking")
+
+        js_files = []
+        for root, _, files in os.walk(self.extension_dir):
+            for file in files:
+                if file.endswith(".js"):
+                    js_files.append(os.path.join(root, file))
+
+        self.assertGreater(len(js_files), 0, "Extension must contain JavaScript files")
+        for js_file in js_files:
+            res = subprocess.run([node_bin, "--check", js_file], capture_output=True, text=True)
+            self.assertEqual(
+                res.returncode, 0,
+                f"JavaScript syntax error in {os.path.relpath(js_file, self.repo_root)}:\n{res.stderr}"
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

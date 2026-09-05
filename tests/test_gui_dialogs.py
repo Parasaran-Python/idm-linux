@@ -55,6 +55,37 @@ class TestGUIDialogs(unittest.TestCase):
         urls = dialog.get_urls()
         self.assertEqual(len(urls), 2)
 
+    def test_probe_worker_normalizes_videoplayback_url(self):
+        from idm_gui.dialogs.download_info_dialog import ProbeWorker
+        from idm_core.utils import normalize_youtube_videoplayback_url
+        worker = ProbeWorker(
+            url="https://rr1---sn-4g5ednsl.googlevideo.com/videoplayback?expire=12345",
+            headers={"Referer": "https://www.youtube.com/watch?v=dQw4w9WgXcQ"}
+        )
+        worker.url, _ = normalize_youtube_videoplayback_url(worker.url, worker.headers)
+        self.assertEqual(worker.url, "https://www.youtube.com/watch?v=dQw4w9WgXcQ")
+
+        # Non-youtube referer should not normalize
+        worker2 = ProbeWorker(
+            url="https://rr1---sn-4g5ednsl.googlevideo.com/videoplayback?expire=12345",
+            headers={"Referer": "https://example.com/watch?v=123"}
+        )
+        worker2.url, _ = normalize_youtube_videoplayback_url(worker2.url, worker2.headers)
+        self.assertEqual(worker2.url, "https://rr1---sn-4g5ednsl.googlevideo.com/videoplayback?expire=12345")
+
+    def test_download_info_dialog_normalizes_videoplayback_url(self):
+        dialog = DownloadInfoDialog(
+            url="https://rr1---sn-4g5ednsl.googlevideo.com/videoplayback?expire=12345",
+            headers={"Referer": "https://www.youtube.com/watch?v=dQw4w9WgXcQ"},
+            category="General"
+        )
+        self.assertEqual(dialog.url_edit.text(), "https://www.youtube.com/watch?v=dQw4w9WgXcQ")
+        
+        # Test category auto-update in _on_probed
+        dialog._on_probed(10485760, "MyVideo.mp4")
+        self.assertEqual(dialog.category_combo.currentText(), "Video")
+        self.assertIn("MyVideo.mp4", dialog.save_edit.text())
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -18,6 +18,11 @@
       return false;
     }
 
+    // Filter out raw YouTube / GoogleVideo DASH fragments (they lack audio)
+    if (lower.includes("googlevideo.com/videoplayback") || (lower.includes("/videoplayback") && (lower.includes("expire=") || lower.includes("sparams=")))) {
+      return true;
+    }
+
     // Filter out chunk files and fragment extensions
     if (lower.includes(".m4s") || lower.includes(".m4f") || lower.includes(".f4m") || lower.includes(".f4f")) {
       return true;

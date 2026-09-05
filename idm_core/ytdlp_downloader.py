@@ -145,11 +145,11 @@ class YTDLPDownloader:
 
     @classmethod
     def _get_acodec_priority(cls, acodec: Optional[str]) -> int:
-        """Score audio codec priority matching yt-dlp's default bestaudio preference."""
+        """Score audio codec priority preferring standard AAC/mp4a over Opus for MP4 container compatibility."""
         a = (acodec or "").lower()
-        if "opus" in a:
-            return 30
         if "mp4a" in a or "aac" in a:
+            return 30
+        if "opus" in a:
             return 20
         if a != "none" and a != "":
             return 10
@@ -422,34 +422,67 @@ class YTDLPDownloader:
         cmd.extend(self._get_js_runtime_args())
         cmd.extend(self._get_extractor_args(self.url))
 
-        # Quality and format selection with resilient video+audio pairing
-        q_str = str(self.quality or self.headers.get("quality", "")).lower().strip()
-        is_audio = "audio" in q_str or "mp3" in q_str or self.save_path.lower().endswith((".mp3", ".m4a", ".aac"))
-
-        if is_audio:
-            cmd.extend(["-f", "bestaudio/best", "-x", "--audio-format", "mp3"])
-        elif q_str:
-            height = "".join(filter(str.isdigit, q_str))
-            if height:
-                cmd.extend(["-f", f"bestvideo[height<={height}]+bestaudio/best[height<={height}]/bestvideo+bestaudio/best"])
-            else:
-                cmd.extend(["-f", "bestvideo+bestaudio/best"])
-        else:
-            cmd.extend(["-f", "bestvideo+bestaudio/best"])
-
         # Automatic container merging via ffmpeg if available
         ffmpeg_bin = resolve_binary("ffmpeg")
         if ffmpeg_bin:
             cmd.extend(["--ffmpeg-location", ffmpeg_bin])
-            if not is_audio and not self.save_path.lower().endswith((".mkv", ".webm")):
-                cmd.extend(["--merge-output-format", "mp4"])
 
-        # Add User-Agent and Referer if present
+        # Quality and format selection with resilient video+audio pairing
+        q_str = str(self.quality or self.headers.get("quality", "")).lower().strip()
+        is_audio = "audio" in q_str or "mp3" in q_str or self.save_path.lower().endswith((".mp3", ".m4a", ".aac"))
+        is_webm = self.save_path.lower().endswith(".webm")
+
+        if is_audio:
+            if ffmpeg_bin:
+                cmd.extend(["-f", "bestaudio/best", "-x", "--audio-format", "mp3"])
+            else:
+                cmd.extend(["-f", "bestaudio/best"])
+        elif ffmpeg_bin:
+            height = "".join(filter(str.isdigit, q_str)) if q_str else ""
+            if is_webm:
+                # WebM containers require Opus or Vorbis audio; do not force AAC or MP4 muxing
+                if height:
+                    cmd.extend(["-f", f"bestvideo[height<={height}]+bestaudio/best[height<={height}]/best"])
+                else:
+                    cmd.extend(["-f", "bestvideo+bestaudio/best"])
+            else:
+                # When ffmpeg is available and container is MP4 (or default), prioritize native AAC/m4a audio
+                # to guarantee full sound playback compatibility across all OSes (Windows Media Player, QuickTime, mobile, TV)
+                if height:
+                    cmd.extend([
+                        "-f",
+                        f"bestvideo[height<={height}]+bestaudio[ext=m4a]/bestvideo[height<={height}]+bestaudio[acodec^=mp4a]/bestvideo[height<={height}]+bestaudio/best[height<={height}]/best"
+                    ])
+                else:
+                    cmd.extend([
+                        "-f",
+                        "bestvideo+bestaudio[ext=m4a]/bestvideo+bestaudio[acodec^=mp4a]/bestvideo+bestaudio/best"
+                    ])
+                cmd.extend(["-S", "acodec:m4a,acodec:aac"])
+                if not self.save_path.lower().endswith((".mkv",)):
+                    cmd.extend(["--merge-output-format", "mp4"])
+                    cmd.extend(["--postprocessor-args", "Merger:-c:v copy -c:a aac"])
+        else:
+            # Without ffmpeg, yt-dlp cannot merge separate video + audio streams.
+            # Requesting bestvideo+bestaudio without ffmpeg results in unmerged files with silent video.
+            # Fall back to single pre-muxed format containing both video and audio.
+            height = "".join(filter(str.isdigit, q_str)) if q_str else ""
+            if height:
+                cmd.extend(["-f", f"best[height<={height}]/best"])
+            else:
+                cmd.extend(["-f", "best"])
+
+        # Add User-Agent, Referer, and Cookies if present (case-insensitive per RFC 7230)
         if self.headers:
-            if "User-Agent" in self.headers:
-                cmd.extend(["--user-agent", self.headers["User-Agent"]])
-            if "Referer" in self.headers:
-                cmd.extend(["--referer", self.headers["Referer"]])
+            user_agent = next((v for k, v in self.headers.items() if k.lower() == "user-agent"), None)
+            if user_agent:
+                cmd.extend(["--user-agent", user_agent])
+            referer = next((v for k, v in self.headers.items() if k.lower() == "referer"), None)
+            if referer:
+                cmd.extend(["--referer", referer])
+            cookie = next((v for k, v in self.headers.items() if k.lower() == "cookie"), None)
+            if cookie:
+                cmd.extend(["--add-headers", f"Cookie:{cookie}"])
 
         cmd.append(self.url)
 

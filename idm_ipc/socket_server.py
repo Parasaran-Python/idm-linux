@@ -2,6 +2,7 @@ import os
 import socket
 import threading
 from typing import Any, Dict, List, Optional, Set
+from idm_core.utils import normalize_youtube_videoplayback_url
 from idm_ipc.protocol import decode_message, encode_message
 from idm_ipc.transport import BaseConnection, BaseServerTransport, create_server_transport
 
@@ -121,6 +122,17 @@ class IPCServer:
                 url = msg.get("url")
                 if not url:
                     return {"status": "error", "error": "URL is required"}
+
+                headers = msg.get("headers") or {}
+                normalized_url, inferred_fn = normalize_youtube_videoplayback_url(url, headers)
+                if normalized_url != url:
+                    url = normalized_url
+                    msg["url"] = normalized_url
+                    fn = msg.get("filename")
+                    if inferred_fn and (not fn or fn.startswith("videoplayback") or fn in ["download", "watch"]):
+                        msg["filename"] = inferred_fn
+                    elif not fn or fn.startswith("videoplayback") or fn in ["download", "watch"]:
+                        msg["filename"] = None
 
                 # If GUI is active and show_dialog is requested (default for browser), trigger DownloadInfoDialog prompt
                 if msg.get("show_dialog", True) and "download_requested" in self.engine._listeners and self.engine._listeners["download_requested"]:
